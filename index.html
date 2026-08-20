@@ -305,7 +305,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut as fbSignOut
+  getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as fbSignOut
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection,
@@ -342,7 +342,7 @@ function iSt(p){if(!p.stats)p.stats=newStat();return p.stats;}
 function showSc(n){
   document.querySelectorAll('.scr').forEach(s=>s.classList.remove('on'));
   document.getElementById('s-'+n).classList.add('on');
-  if(n==='home'){rHome();unlockOrientation();}
+  if(n==='home')rHome();
   else if(n==='equipo')rSetup();
   else if(n==='history')rHistory();
   else if(n==='match')rMatch();
@@ -372,7 +372,7 @@ function careerDocRef(rid){return doc(db,'teams',teamId,'career',rid);}
 /* ---------- Auth & team ---------- */
 function signInGoogle(){
   const provider=new GoogleAuthProvider();
-  signInWithRedirect(fbAuth, provider).catch(function(e){
+  signInWithPopup(fbAuth, provider).catch(function(e){
     const el=document.getElementById('loginErr');
     if(el){el.textContent='No se pudo iniciar sesión. Probá de nuevo.';el.style.display='block';}
   });
@@ -590,7 +590,6 @@ async function goNewMatch(){
     showHomeMsg('Configura tu equipo primero: necesitas al menos un titular.');
     return;
   }
-  lockLandscape();
   showSc('match');
   const batch=writeBatch(db);
   st.players.forEach(function(p){batch.update(rosterDoc(p.id),{stats:newStat(),note:''});});
@@ -1295,11 +1294,6 @@ onAuthStateChanged(fbAuth, function(user){
     showTeamPick();
   }
 });
-getRedirectResult(fbAuth).catch(function(e){
-  const el=document.getElementById('loginErr');
-  if(el){el.textContent='No se pudo completar el inicio de sesión ('+(e&&e.code?e.code:'error')+'). Probá de nuevo.';el.style.display='block';}
-});
-
 document.getElementById('modal').addEventListener('click', function(e){
   if(e.target && e.target.classList && e.target.classList.contains('ov')) closeModal();
 });
@@ -1308,19 +1302,6 @@ if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
     navigator.serviceWorker.register('sw.js').catch(function(){});
   });
-}
-
-function lockLandscape(){
-  try{
-    if(screen.orientation && screen.orientation.lock){
-      screen.orientation.lock('landscape').catch(function(){});
-    }
-  }catch(e){}
-}
-function unlockOrientation(){
-  try{
-    if(screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
-  }catch(e){}
 }
 
 Object.assign(window, {
