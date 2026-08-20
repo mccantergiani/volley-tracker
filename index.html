@@ -176,7 +176,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Iniciá sesión para acceder al equipo</div>
     <button class="btn-pri" style="max-width:260px;margin:0 auto" onclick="signInGoogle()"><i class="ti ti-brand-google" aria-hidden="true"></i> Iniciar sesión con Google</button>
     <div class="errmsg" id="loginErr" style="display:none;margin-top:10px"></div>
-    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-20.10</div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-20.11</div>
   </div>
 </div>
 
@@ -1272,7 +1272,36 @@ function openMatchDetail(id){
     '<table style="width:100%;border-collapse:collapse"><thead><tr style="border-bottom:0.5px solid var(--border-strong)">'+
     '<th></th>'+th('Jugador')+th('Pts')+th('Ataque')+th('Bloque')+th('Recep')+th('Saque')+'</tr></thead>'+
     '<tbody>'+rows+'</tbody></table>'+
+    '<button class="btn-sec" style="width:100%;margin-top:14px;color:var(--text-danger);border-color:var(--border-danger)" onclick="confirmDeleteMatch(\''+id+'\')"><i class="ti ti-trash" aria-hidden="true"></i> Eliminar partido</button>'+
     '</div></div>';
+}
+function confirmDeleteMatch(id){
+  const m=st.matches.find(function(x){return x.id===id;});if(!m)return;
+  document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet" style="max-width:360px"><div class="grab"></div>'+
+    '<div style="font-size:15px;font-weight:500;color:var(--text-primary);margin-bottom:6px">Eliminar "'+esc(m.name)+'"</div>'+
+    '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">Se borra este partido del historial y se resta su aporte de las estadísticas de carrera de cada jugador que participó. No se puede deshacer.</div>'+
+    '<div style="display:flex;gap:8px"><button class="btn-sec" style="flex:1" onclick="openMatchDetail(\''+id+'\')">Cancelar</button>'+
+    '<button class="btn-sec" style="flex:1;color:var(--text-danger);border-color:var(--border-danger)" onclick="deleteMatchRecord(\''+id+'\')">Eliminar</button></div>'+
+    '</div></div>';
+}
+async function deleteMatchRecord(id){
+  const m=st.matches.find(function(x){return x.id===id;});if(!m)return;
+  const players=m.players||[];
+  for(let i=0;i<players.length;i++){
+    const p=players[i];
+    if(!p.rid)continue;
+    const upd={
+      matches:increment(-1),
+      puntos:increment(-(p.puntos||0)),
+      'ataque.g':increment(-((p.ataque&&p.ataque.g)||0)),'ataque.b':increment(-((p.ataque&&p.ataque.b)||0)),
+      'bloque.g':increment(-((p.bloque&&p.bloque.g)||0)),'bloque.b':increment(-((p.bloque&&p.bloque.b)||0)),
+      'recep.g':increment(-((p.recep&&p.recep.g)||0)),'recep.b':increment(-((p.recep&&p.recep.b)||0)),
+      'saque.g':increment(-((p.saque&&p.saque.g)||0)),'saque.b':increment(-((p.saque&&p.saque.b)||0))
+    };
+    try{await updateDoc(careerDocRef(p.rid),upd);}catch(e){}
+  }
+  try{await deleteDoc(doc(db,'teams',teamId,'matches',id));}catch(e){}
+  closeModal();
 }
 
 function showStats(){
@@ -1336,7 +1365,7 @@ Object.assign(window, {
   savePNote, scoreAction, pointUs, pointThem, pickAuthor, confirmPoint, openSub, doSub, openHist, openRally,
   editAuthor, editNote, delRally, openMenu, doRotate, nextSet, confirmFinalize, finalizeMatch, openMatchDetail,
   showStats, closeModal, st, handleLogoFile, openFormation, pickSwap, doSwapPos, setTeamDescription,
-  setPlayerRole, toggleSecondaryRole
+  setPlayerRole, toggleSecondaryRole, confirmDeleteMatch, deleteMatchRecord
 });
 </script>
 </body>
