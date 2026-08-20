@@ -128,6 +128,12 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
 .rdot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .rtxt{flex:1;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rsc{font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums}
+.rlrow{display:flex;align-items:center;gap:6px;padding:4px 7px;border-radius:6px;margin-bottom:3px;font-size:11px;border-left:3px solid}
+.rlrow.us{background:var(--bg-success);border-left-color:var(--border-success)}
+.rlrow.them{background:var(--bg-danger);border-left-color:var(--border-danger)}
+.rlwho{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary)}
+.rlrot{color:var(--text-muted);font-size:10px;flex-shrink:0}
+.rlsc{font-weight:600;font-variant-numeric:tabular-nums;flex-shrink:0;color:var(--text-primary)}
 
 .fcard{width:230px;margin:4px auto 6px;padding:16px 14px 18px;border-radius:26px 26px 64px 64px;position:relative;box-shadow:0 8px 18px rgba(0,0,0,0.35);color:#3a2a0a;text-align:center}
 .fcard-top{display:flex;justify-content:space-between;align-items:flex-start;padding:0 4px}
@@ -189,6 +195,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
     <button class="ico" style="width:30px;height:30px" onclick="openAccountMenu()" aria-label="Cuenta"><i class="ti ti-dots-vertical" aria-hidden="true"></i></button>
   </div>
   <div style="text-align:center;margin-bottom:6px">
+    <div id="homeLogo" style="width:56px;height:56px;border-radius:12px;overflow:hidden;margin:0 auto 8px;display:none"></div>
     <div style="font-size:18px;font-weight:500;color:var(--text-primary)" id="homeTeamName">Mi equipo</div>
     <div style="font-size:12px;color:var(--text-muted)">Seguimiento de partidos de vóleibol</div>
   </div>
@@ -205,6 +212,11 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
     <label class="fl">Nombre del equipo</label>
     <input type="text" id="tName" placeholder="Mi equipo" onchange="setTeamName(this.value)">
     <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Se guarda en la nube y lo ve todo tu cuerpo técnico.</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+    <div id="teamLogoPreview" style="width:44px;height:44px;border-radius:10px;background:var(--surface-1);border:0.5px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0"></div>
+    <input type="file" accept="image/*" id="logoInp" style="display:none" onchange="handleLogoFile(this)">
+    <button class="btn-sec" onclick="document.getElementById('logoInp').click()"><i class="ti ti-photo" aria-hidden="true"></i> Cambiar logo del equipo</button>
   </div>
   <div class="sec-t">Agregar jugador</div>
   <div class="frow">
@@ -260,6 +272,8 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
         <button class="qbtn us" onclick="pointUs()"><i class="ti ti-plus" aria-hidden="true"></i> Punto nuestro</button>
         <button class="qbtn them" id="qThemBtn" onclick="pointThem()"><i class="ti ti-plus" aria-hidden="true"></i> Punto rival</button>
       </div>
+      <div style="font-size:11px;font-weight:500;color:var(--text-secondary);margin:2px 0 2px 2px">Racha del set</div>
+      <div id="rallyLog" style="max-height:120px;overflow-y:auto"></div>
     </div>
     <div class="mright">
       <div class="panel" id="panel"></div>
@@ -299,7 +313,7 @@ const GP=[4,3,2,5,6,1];
 const METRICS=[['bloque','Bloque',true],['recep','Recepción',false],['ataque','Ataque',true],['saque','Saque',true]];
 const MLBL={bloque:'Bloque',recep:'Recepción',ataque:'Ataque',saque:'Saque'};
 
-let st={teamName:'',players:[],score:{us:0,them:0},set:1,serving:'us',rallies:[],career:{},matches:[],
+let st={teamName:'',teamLogo:null,players:[],score:{us:0,them:0},set:1,serving:'us',rallies:[],career:{},matches:[],
   setHistory:[],opponent:'',matchName:'',matchPlace:'',matchDate:''};
 let selId=null, subForId=null;
 let currentUser=null, teamId=null, unsubs=[];
@@ -421,14 +435,49 @@ function setTeamName(v){
   updateHomeTeamName();
   if(teamId) updateDoc(doc(db,'teams',teamId),{name:st.teamName}).catch(function(){});
 }
+function renderTeamLogoPreview(){
+  const el=document.getElementById('teamLogoPreview');
+  if(el)el.innerHTML=st.teamLogo?'<img src="'+st.teamLogo+'" style="width:100%;height:100%;object-fit:cover">':'<i class="ti ti-shirt-sport" aria-hidden="true" style="color:var(--text-muted);font-size:20px"></i>';
+  const hl=document.getElementById('homeLogo');
+  if(hl){
+    if(st.teamLogo){hl.innerHTML='<img src="'+st.teamLogo+'" style="width:100%;height:100%;object-fit:cover">';hl.style.display='block';}
+    else{hl.innerHTML='';hl.style.display='none';}
+  }
+}
+function handleLogoFile(inputEl){
+  const file=inputEl.files&&inputEl.files[0];
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    const img=new Image();
+    img.onload=function(){
+      const maxDim=240;
+      let w=img.width,h=img.height;
+      if(w>h){if(w>maxDim){h=Math.round(h*maxDim/w);w=maxDim;}}
+      else{if(h>maxDim){w=Math.round(w*maxDim/h);h=maxDim;}}
+      const canvas=document.createElement('canvas');
+      canvas.width=w;canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      const dataUrl=canvas.toDataURL('image/jpeg',0.85);
+      st.teamLogo=dataUrl;
+      renderTeamLogoPreview();
+      if(teamId)updateDoc(doc(db,'teams',teamId),{logo:dataUrl}).catch(function(){});
+    };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
 
 /* ---------- Realtime listeners ---------- */
 function startTeamListeners(){
   teardownListeners();
   unsubs.push(onSnapshot(doc(db,'teams',teamId), function(snap){
     if(snap.exists()){
-      st.teamName=snap.data().name||'';
+      const d=snap.data();
+      st.teamName=d.name||'';
+      st.teamLogo=d.logo||null;
       updateHomeTeamName();
+      renderTeamLogoPreview();
       const tn=document.getElementById('tName');if(tn && document.activeElement!==tn)tn.value=st.teamName;
       rerenderCurrentScreen();
     }
@@ -463,8 +512,10 @@ function startTeamListeners(){
     st.rallies=qs.docs.map(function(d,i){
       const data=d.data();
       return {id:d.id, n:i+1, side:data.side, playerId:data.playerId||null, note:data.note||'',
-        us:data.us, them:data.them, rotated:!!data.rotated, actionKey:data.actionKey||null};
+        us:data.us, them:data.them, rotated:!!data.rotated, actionKey:data.actionKey||null,
+        serverNumber:data.serverNumber||null, serverName:data.serverName||null};
     });
+    rRallyLog();
   }));
   unsubs.push(onSnapshot(query(matchesCol(), orderBy('date','desc')), function(qs){
     st.matches=qs.docs.map(function(d){return Object.assign({id:d.id}, d.data());});
@@ -489,6 +540,7 @@ function rHome(){
   const n=st.players.length,nm=st.matches.length;
   const ue=document.getElementById('homeUserEmail');if(ue)ue.textContent=currentUser?currentUser.email:'';
   document.getElementById('homeMsg').style.display='none';
+  renderTeamLogoPreview();
   document.getElementById('homeList').innerHTML=
     '<div class="mcard" onclick="goNewMatch()"><div class="micon" style="background:var(--bg-accent);color:var(--text-accent)"><i class="ti ti-player-play" aria-hidden="true"></i></div>'+
     '<div class="mtxt"><div class="mtitle">Nuevo partido</div><div class="msub">Registrar un partido en vivo</div></div>'+
@@ -567,6 +619,7 @@ function toggleStarter(id){
   }
 }
 function rSetup(){
+  renderTeamLogoPreview();
   const tit=st.players.filter(function(p){return p.starter;}).sort(function(a,b){return a.position-b.position;});
   const ben=st.players.filter(function(p){return !p.starter;});
   document.getElementById('titSec').innerHTML='<div class="sec-t">Titulares ('+tit.length+'/6)</div>'+
@@ -765,7 +818,22 @@ function rMatch(){
   const meta=[st.matchName,st.matchPlace].filter(Boolean).join(' · ');
   const metaEl=document.getElementById('mMeta');
   metaEl.textContent=meta;metaEl.style.display=meta?'block':'none';
-  rCourt();rPanel();
+  rCourt();rPanel();rRallyLog();
+}
+function rRallyLog(){
+  const el=document.getElementById('rallyLog');if(!el)return;
+  if(!st.rallies.length){el.innerHTML='<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:8px 0">Sin puntos aún</div>';return;}
+  const recent=st.rallies.slice().reverse().slice(0,20);
+  el.innerHTML=recent.map(function(r){
+    const isUs=r.side==='us';
+    const who=isUs?(r.playerId&&P(r.playerId)?esc(P(r.playerId).name):(st.teamName||'Equipo')):esc(oppName());
+    const via=r.actionKey?' · '+MLBL[r.actionKey]:'';
+    const rot=r.serverNumber?('Saca #'+esc(r.serverNumber)):'';
+    return '<div class="rlrow '+(isUs?'us':'them')+'"><span style="font-weight:600;color:var(--text-secondary)">#'+r.n+'</span>'+
+      '<span class="rlwho">'+who+via+'</span>'+
+      '<span class="rlrot">'+rot+'</span>'+
+      '<span class="rlsc">'+r.us+'-'+r.them+'</span></div>';
+  }).join('');
 }
 function rCourt(){
   document.getElementById('court').innerHTML=GP.map(function(pos){
@@ -842,9 +910,12 @@ function recordPoint(side,playerId,note,actionKey){
   else{upd['score.them']=increment(1);upd.serving='them';}
   updateDoc(liveRef(),upd).catch(function(){});
   if(rotated)doRotate();
+  const pos1Before=st.players.find(function(p){return p.starter&&p.position===1;});
+  const pos1After=rotated?st.players.find(function(p){return p.starter&&p.position===2;}):pos1Before;
   addDoc(ralliesCol(),{
     side:side,playerId:playerId||null,note:note||'',us:nextUs,them:nextThem,
-    rotated:!!rotated,actionKey:actionKey||null,ts:serverTimestamp()
+    rotated:!!rotated,actionKey:actionKey||null,ts:serverTimestamp(),
+    serverNumber:pos1After?pos1After.number:null,serverName:pos1After?pos1After.name:null
   }).catch(function(){});
 }
 async function doRotate(){
@@ -855,6 +926,44 @@ async function doRotate(){
     batch.update(rosterDoc(p.id),{position:newPos});
   });
   try{await batch.commit();}catch(e){}
+}
+
+function openFormation(){
+  const tit=st.players.filter(function(p){return p.starter;});
+  const rows=[1,2,3,4,5,6].map(function(pos){
+    const p=tit.find(function(x){return x.position===pos;});
+    if(!p)return '<div class="prow"><span class="ptag">Pos '+pos+'</span><span style="flex:1;color:var(--text-muted);font-size:12px">Vacío</span></div>';
+    return '<div class="prow"><span class="ptag">Pos '+pos+'</span>'+
+      '<div class="pbadge" style="background:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</div>'+
+      '<div style="flex:1;font-size:13px;color:var(--text-primary)">'+esc(p.name)+'</div>'+
+      '<button class="btn-sec" onclick="pickSwap('+pos+')">Cambiar</button></div>';
+  }).join('');
+  document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet"><div class="grab"></div>'+
+    '<div class="sh-head"><div style="flex:1;font-size:15px;font-weight:500;color:var(--text-primary)">Editar formación</div>'+
+    '<button class="ico" style="border:none;width:30px;height:30px" onclick="closeModal()" aria-label="Cerrar"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
+    '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px">Tocá "Cambiar" en una posición para intercambiarla con otro titular. Usalo para armar la rotación real con la que arrancaron.</div>'+
+    '<div class="plist">'+rows+'</div>'+
+    '</div></div>';
+}
+function pickSwap(pos){
+  const tit=st.players.filter(function(p){return p.starter;});
+  const others=tit.filter(function(x){return x.position!==pos;});
+  document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet" style="max-width:360px"><div class="grab"></div>'+
+    '<div class="sh-head"><div style="flex:1;font-size:15px;font-weight:500;color:var(--text-primary)">¿Con quién cambia la posición '+pos+'?</div>'+
+    '<button class="ico" style="border:none;width:30px;height:30px" onclick="openFormation()" aria-label="Volver"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
+    '<div class="chips">'+others.map(function(p){return '<button class="chip" onclick="doSwapPos('+pos+',\''+p.id+'\')"><b style="color:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</b> '+esc(p.name)+' (Pos '+p.position+')</button>';}).join('')+'</div>'+
+    '</div></div>';
+}
+function doSwapPos(pos,otherId){
+  const tit=st.players.filter(function(p){return p.starter;});
+  const current=tit.find(function(x){return x.position===pos;});
+  const other=P(otherId);
+  if(!other)return;
+  const batch=writeBatch(db);
+  batch.update(rosterDoc(other.id),{position:pos});
+  if(current)batch.update(rosterDoc(current.id),{position:other.position});
+  batch.commit().catch(function(){});
+  openFormation();
 }
 
 function askNote(){
@@ -875,7 +984,9 @@ function pickAuthor(btn,id){window._author=id;btn.parentNode.querySelectorAll('.
 function confirmPoint(){
   const note=(document.getElementById('rNote').value||'').trim();
   const auth=window._author===undefined?null:window._author;
-  closeModal();recordPoint('us',auth,note);
+  closeModal();
+  if(auth){updateDoc(rosterDoc(auth),{'stats.puntos':increment(1)}).catch(function(){});}
+  recordPoint('us',auth,note);
 }
 
 function openSub(id){
@@ -936,7 +1047,19 @@ function openRally(n){
 }
 function editAuthor(n,pid){
   const r=st.rallies.find(function(x){return x.n===n;});if(!r)return;
+  const oldPid=r.playerId;
+  if(oldPid===pid)return;
   updateDoc(rallyDocRef(r.id),{playerId:pid}).catch(function(){});
+  if(oldPid){
+    const u1={'stats.puntos':increment(-1)};
+    if(r.actionKey)u1['stats.'+r.actionKey+'.g']=increment(-1);
+    updateDoc(rosterDoc(oldPid),u1).catch(function(){});
+  }
+  if(pid){
+    const u2={'stats.puntos':increment(1)};
+    if(r.actionKey)u2['stats.'+r.actionKey+'.g']=increment(1);
+    updateDoc(rosterDoc(pid),u2).catch(function(){});
+  }
   r.playerId=pid;openRally(n);
 }
 function editNote(n,v){
@@ -949,8 +1072,10 @@ function delRally(n){
     'score.us':increment(r.side==='us'?-1:0),
     'score.them':increment(r.side==='them'?-1:0)
   }).catch(function(){});
-  if(r.actionKey&&r.playerId){
-    updateDoc(rosterDoc(r.playerId),{['stats.'+r.actionKey+'.g']:increment(-1),'stats.puntos':increment(-1)}).catch(function(){});
+  if(r.playerId){
+    const upd={'stats.puntos':increment(-1)};
+    if(r.actionKey)upd['stats.'+r.actionKey+'.g']=increment(-1);
+    updateDoc(rosterDoc(r.playerId),upd).catch(function(){});
   }
   deleteDoc(rallyDocRef(r.id)).catch(function(){});
   closeModal();
@@ -963,6 +1088,7 @@ function openMenu(){
     '<button class="ico" style="border:none;width:30px;height:30px" onclick="closeModal()" aria-label="Cerrar"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
     '<button class="btn-sec" style="width:100%;margin-bottom:8px;text-align:left" onclick="openHist()"><i class="ti ti-history" aria-hidden="true"></i> Historial de puntos</button>'+
     '<button class="btn-sec" style="width:100%;margin-bottom:8px;text-align:left" onclick="doRotate();closeModal()"><i class="ti ti-rotate-clockwise" aria-hidden="true"></i> Rotar manualmente</button>'+
+    '<button class="btn-sec" style="width:100%;margin-bottom:8px;text-align:left" onclick="openFormation()"><i class="ti ti-layout-grid" aria-hidden="true"></i> Editar formación</button>'+
     '<button class="btn-sec" style="width:100%;margin-bottom:8px;text-align:left" onclick="closeModal();askServe()"><i class="ti ti-ball-volleyball" aria-hidden="true"></i> Cambiar quién saca</button>'+
     '<button class="btn-sec" style="width:100%;margin-bottom:8px;text-align:left" onclick="showStats()"><i class="ti ti-chart-bar" aria-hidden="true"></i> Estadísticas del set</button>'+
     '<button class="btn-sec" style="width:100%;margin-bottom:8px;text-align:left" onclick="nextSet()"><i class="ti ti-player-track-next" aria-hidden="true"></i> Cerrar set y empezar otro</button>'+
@@ -1128,7 +1254,7 @@ Object.assign(window, {
   confirmClearRoster, clearRoster, cancelNewMatch, finishNewMatchSetup, askServe, setServe, selectP, bump,
   savePNote, scoreAction, pointUs, pointThem, pickAuthor, confirmPoint, openSub, doSub, openHist, openRally,
   editAuthor, editNote, delRally, openMenu, doRotate, nextSet, confirmFinalize, finalizeMatch, openMatchDetail,
-  showStats, closeModal, st
+  showStats, closeModal, st, handleLogoFile, openFormation, pickSwap, doSwapPos
 });
 </script>
 </body>
