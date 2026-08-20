@@ -372,9 +372,10 @@ function careerDocRef(rid){return doc(db,'teams',teamId,'career',rid);}
 /* ---------- Auth & team ---------- */
 function signInGoogle(){
   const provider=new GoogleAuthProvider();
+  const el=document.getElementById('loginErr');
+  if(el)el.style.display='none';
   signInWithPopup(fbAuth, provider).catch(function(e){
-    const el=document.getElementById('loginErr');
-    if(el){el.textContent='No se pudo iniciar sesión. Probá de nuevo.';el.style.display='block';}
+    if(el){el.textContent='Error: '+(e&&e.code?e.code:'desconocido')+' — '+(e&&e.message?e.message:'');el.style.display='block';}
   });
 }
 function signOutGoogle(){
