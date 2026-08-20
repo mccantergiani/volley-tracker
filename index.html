@@ -307,7 +307,14 @@ let currentUser=null, teamId=null, unsubs=[];
 function newStat(){return{bloque:{g:0,b:0},recep:{g:0,b:0},ataque:{g:0,b:0},saque:{g:0,b:0},puntos:0};}
 function P(id){return st.players.find(p=>p.id===id);}
 function iSt(p){if(!p.stats)p.stats=newStat();return p.stats;}
-function showSc(n){document.querySelectorAll('.scr').forEach(s=>s.classList.remove('on'));document.getElementById('s-'+n).classList.add('on');}
+function showSc(n){
+  document.querySelectorAll('.scr').forEach(s=>s.classList.remove('on'));
+  document.getElementById('s-'+n).classList.add('on');
+  if(n==='home')rHome();
+  else if(n==='equipo')rSetup();
+  else if(n==='history')rHistory();
+  else if(n==='match')rMatch();
+}
 function showE(el,m){el.textContent=m;el.style.display='block';}
 function hideE(el){el.style.display='none';}
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
