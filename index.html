@@ -176,7 +176,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Iniciá sesión para acceder al equipo</div>
     <button class="btn-pri" style="max-width:260px;margin:0 auto" onclick="signInGoogle()"><i class="ti ti-brand-google" aria-hidden="true"></i> Iniciar sesión con Google</button>
     <div class="errmsg" id="loginErr" style="display:none;margin-top:10px"></div>
-    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-20.9</div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-20.10</div>
   </div>
 </div>
 
@@ -549,7 +549,7 @@ function startTeamListeners(){
       const data=d.data();
       return {id:d.id, n:i+1, side:data.side, playerId:data.playerId||null, note:data.note||'',
         us:data.us, them:data.them, rotated:!!data.rotated, actionKey:data.actionKey||null,
-        serverNumber:data.serverNumber||null, serverName:data.serverName||null};
+        setterPos:(typeof data.setterPos==='number')?data.setterPos:null};
     });
     rRallyLog();
   }));
@@ -911,7 +911,7 @@ function rRallyLog(){
     const isUs=r.side==='us';
     const who=isUs?(r.playerId&&P(r.playerId)?esc(P(r.playerId).name):(st.teamName||'Equipo')):esc(oppName());
     const via=r.actionKey?' · '+MLBL[r.actionKey]:'';
-    const rot=r.serverNumber?('Saca #'+esc(r.serverNumber)):'';
+    const rot=(r.setterPos!=null)?('Armador P'+r.setterPos):'';
     return '<div class="rlrow '+(isUs?'us':'them')+'"><span style="font-weight:600;color:var(--text-secondary)">#'+r.n+'</span>'+
       '<span class="rlwho">'+who+via+'</span>'+
       '<span class="rlrot">'+rot+'</span>'+
@@ -992,12 +992,12 @@ function recordPoint(side,playerId,note,actionKey){
   else{upd['score.them']=increment(1);upd.serving='them';}
   updateDoc(liveRef(),upd).catch(function(){});
   if(rotated)doRotate();
-  const pos1Before=st.players.find(function(p){return p.starter&&p.position===1;});
-  const pos1After=rotated?st.players.find(function(p){return p.starter&&p.position===2;}):pos1Before;
+  const setter=st.players.find(function(p){return p.starter&&p.role==='setter';});
+  const setterPos=setter?(rotated?(setter.position===1?6:setter.position-1):setter.position):null;
   addDoc(ralliesCol(),{
     side:side,playerId:playerId||null,note:note||'',us:nextUs,them:nextThem,
     rotated:!!rotated,actionKey:actionKey||null,ts:serverTimestamp(),
-    serverNumber:pos1After?pos1After.number:null,serverName:pos1After?pos1After.name:null
+    setterPos:setterPos
   }).catch(function(){});
 }
 async function doRotate(){
