@@ -342,7 +342,7 @@ function iSt(p){if(!p.stats)p.stats=newStat();return p.stats;}
 function showSc(n){
   document.querySelectorAll('.scr').forEach(s=>s.classList.remove('on'));
   document.getElementById('s-'+n).classList.add('on');
-  if(n==='home')rHome();
+  if(n==='home'){rHome();unlockOrientation();}
   else if(n==='equipo')rSetup();
   else if(n==='history')rHistory();
   else if(n==='match')rMatch();
@@ -519,7 +519,7 @@ function startTeamListeners(){
       const data=d.data();
       return {
         id:d.id, rid:d.id, name:data.name, number:data.number, role:data.role,
-        starter:!!data.starter, position:data.position||null,
+        starter:!!data.starter, position:data.position||null, secondaryRoles:data.secondaryRoles||[],
         attrs:Object.assign({ataque:50,recep:50,saque:50,salto:50,ritmo:50,mental:50}, data.attrs||{}),
         photo:data.photo||null, note:data.note||'',
         stats:Object.assign(newStat(), data.stats||{})
@@ -590,6 +590,7 @@ async function goNewMatch(){
     showHomeMsg('Configura tu equipo primero: necesitas al menos un titular.');
     return;
   }
+  lockLandscape();
   showSc('match');
   const batch=writeBatch(db);
   st.players.forEach(function(p){batch.update(rosterDoc(p.id),{stats:newStat(),note:''});});
@@ -631,7 +632,7 @@ function addP(){
     for(let i=1;i<=6;i++){if(!taken.has(i)){position=i;break;}}
   }
   addDoc(rosterCol(),{
-    name:nm,number:no,role:rl,starter:starter,position:position,
+    name:nm,number:no,role:rl,starter:starter,position:position,secondaryRoles:[],
     attrs:{ataque:50,recep:50,saque:50,salto:50,ritmo:50,mental:50},photo:null,note:'',stats:newStat()
   }).catch(function(){showE(er,'No se pudo agregar. Probá de nuevo.');});
   document.getElementById('pNm').value='';document.getElementById('pNo').value='';document.getElementById('pNm').focus();
@@ -662,12 +663,14 @@ function rSetup(){
 }
 function rowHtml(p){
   const toggleBtn='<button class="btn-sec" style="padding:4px 8px;font-size:11px;white-space:nowrap" onclick="toggleStarter(\''+p.id+'\')">'+(p.starter?'A banca':'A titular')+'</button>';
-  const histBtn='<button class="ico" style="width:30px;height:30px" onclick="openProfile(\''+p.id+'\')" aria-label="Ver carta"><i class="ti ti-id-badge-2" aria-hidden="true" style="font-size:14px"></i></button>';
-  return '<div class="prow"><div class="pbadge" style="background:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</div>'+
-    '<div style="flex:1;font-size:13px;color:var(--text-primary)">'+esc(p.name)+'</div>'+
+  return '<div class="prow">'+
+    '<div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;cursor:pointer" onclick="openProfile(\''+p.id+'\')">'+
+    '<div class="pbadge" style="background:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</div>'+
+    '<div style="font-size:13px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(p.name)+'</div>'+
+    '</div>'+
     '<span class="rtag">'+RN[p.role]+'</span>'+
     (p.starter?'<span class="ptag">Pos '+p.position+'</span>':'<span class="btag">Banca</span>')+
-    toggleBtn+histBtn+
+    toggleBtn+
     '<button class="ico" style="width:30px;height:30px;border-color:var(--border-danger)" onclick="rmP(\''+p.id+'\')" aria-label="Eliminar"><i class="ti ti-trash" aria-hidden="true" style="color:var(--text-danger);font-size:14px"></i></button></div>';
 }
 
@@ -724,10 +727,33 @@ function openProfile(id){
     '<button class="btn-sec" onclick="document.getElementById(\'photoInp\').click()"><i class="ti ti-camera" aria-hidden="true"></i> '+(p.photo?'Cambiar foto':'Agregar foto')+'</button> '+
     (p.photo?'<button class="btn-sec" style="color:var(--text-danger);border-color:var(--border-danger)" onclick="removePhoto(\''+p.id+'\')" aria-label="Quitar foto"><i class="ti ti-trash" aria-hidden="true"></i></button>':'')+
     '</div>'+
+    '<div class="sec-t">Rol y posiciones</div>'+
+    '<div class="fg" style="margin-bottom:8px"><label class="fl">Rol principal (el que se usa en el partido)</label>'+
+    '<select onchange="setPlayerRole(\''+p.id+'\',this.value)">'+Object.keys(RN).map(function(r){return '<option value="'+r+'"'+(r===p.role?' selected':'')+'>'+RN[r]+'</option>';}).join('')+'</select></div>'+
+    '<div class="fl" style="margin-bottom:6px">También puede jugar de (opcional)</div>'+
+    '<div class="chips" style="margin-bottom:6px">'+Object.keys(RN).filter(function(r){return r!==p.role;}).map(function(r){
+      const active=(p.secondaryRoles||[]).indexOf(r)>=0;
+      return '<button class="chip" style="'+(active?'background:var(--bg-accent);border-color:var(--border-accent)':'')+'" onclick="toggleSecondaryRole(\''+p.id+'\',\''+r+'\')">'+RN[r]+'</button>';
+    }).join('')+'</div>'+
     '<button class="btn-sec" style="width:100%;margin-top:6px" onclick="openEditAttrs(\''+p.id+'\')"><i class="ti ti-adjustments" aria-hidden="true"></i> Editar cualidades</button>'+
     '<div class="sec-t">Historial de carrera</div>'+careerHtml+
     '<div class="sec-t">Partidos jugados</div>'+matchesHtml+
     '</div></div>';
+}
+function setPlayerRole(id,role){
+  const p=P(id);if(!p)return;
+  const filteredSecondary=(p.secondaryRoles||[]).filter(function(r){return r!==role;});
+  updateDoc(rosterDoc(id),{role:role,secondaryRoles:filteredSecondary}).catch(function(){});
+  p.role=role;p.secondaryRoles=filteredSecondary;
+  openProfile(id);
+}
+function toggleSecondaryRole(id,role){
+  const p=P(id);if(!p)return;
+  const cur=p.secondaryRoles||[];
+  const next=cur.indexOf(role)>=0?cur.filter(function(r){return r!==role;}):cur.concat([role]);
+  updateDoc(rosterDoc(id),{secondaryRoles:next}).catch(function(){});
+  p.secondaryRoles=next;
+  openProfile(id);
 }
 function openEditAttrs(id){
   const p=P(id);if(!p)return;
@@ -909,11 +935,10 @@ function rPanel(){
     '</div></div>';
   }).join('');
   panel.innerHTML=
-    '<div class="sh-head"><div class="pbadge" style="width:34px;height:34px;font-size:13px;background:'+col+'">'+esc(p.number)+'</div>'+
+    '<div class="sh-head" style="cursor:pointer" onclick="openProfile(\''+p.id+'\')"><div class="pbadge" style="width:34px;height:34px;font-size:13px;background:'+col+'">'+esc(p.number)+'</div>'+
     '<div style="flex:1"><div style="font-size:14px;font-weight:500;color:var(--text-primary)">'+esc(p.name)+'</div>'+
     '<div style="font-size:11px;color:var(--text-secondary)">'+RN[p.role]+' · Pos '+p.position+' · <span style="color:var(--text-accent);font-weight:500">'+s.puntos+' pts</span></div></div>'+
-    '<button class="ico" style="width:30px;height:30px" onclick="openProfile(\''+p.id+'\')" aria-label="Ver carta"><i class="ti ti-id-badge-2" aria-hidden="true"></i></button>'+
-    '<button class="ico" style="width:30px;height:30px;border:none" onclick="selectP(null)" aria-label="Cerrar"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
+    '<button class="ico" style="width:30px;height:30px;border:none" onclick="event.stopPropagation();selectP(null)" aria-label="Cerrar"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
     '<div style="font-size:10px;color:var(--text-muted);display:flex;justify-content:space-between;padding:0 2px 2px">'+
     '<span><i class="ti ti-arrow-up" aria-hidden="true" style="color:var(--text-success)"></i> bien &nbsp; <i class="ti ti-arrow-down" aria-hidden="true" style="color:var(--text-danger)"></i> mal</span>'+
     '<span><i class="ti ti-trophy" aria-hidden="true" style="color:var(--text-accent)"></i> fue punto</span></div>'+
@@ -1285,11 +1310,18 @@ if('serviceWorker' in navigator){
   });
 }
 
-try{
-  if(screen.orientation && screen.orientation.lock){
-    screen.orientation.lock('landscape').catch(function(){});
-  }
-}catch(e){}
+function lockLandscape(){
+  try{
+    if(screen.orientation && screen.orientation.lock){
+      screen.orientation.lock('landscape').catch(function(){});
+    }
+  }catch(e){}
+}
+function unlockOrientation(){
+  try{
+    if(screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+  }catch(e){}
+}
 
 Object.assign(window, {
   signInGoogle, signOutGoogle, openAccountMenu, copyTeamCode, leaveTeam, createTeam, joinTeam, setTeamName,
@@ -1297,7 +1329,8 @@ Object.assign(window, {
   confirmClearRoster, clearRoster, cancelNewMatch, finishNewMatchSetup, askServe, setServe, selectP, bump,
   savePNote, scoreAction, pointUs, pointThem, pickAuthor, confirmPoint, openSub, doSub, openHist, openRally,
   editAuthor, editNote, delRally, openMenu, doRotate, nextSet, confirmFinalize, finalizeMatch, openMatchDetail,
-  showStats, closeModal, st, handleLogoFile, openFormation, pickSwap, doSwapPos, setTeamDescription
+  showStats, closeModal, st, handleLogoFile, openFormation, pickSwap, doSwapPos, setTeamDescription,
+  setPlayerRole, toggleSecondaryRole
 });
 </script>
 </body>
