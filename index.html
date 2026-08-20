@@ -176,7 +176,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Iniciá sesión para acceder al equipo</div>
     <button class="btn-pri" style="max-width:260px;margin:0 auto" onclick="signInGoogle()"><i class="ti ti-brand-google" aria-hidden="true"></i> Iniciar sesión con Google</button>
     <div class="errmsg" id="loginErr" style="display:none;margin-top:10px"></div>
-    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-20.6</div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-20.7</div>
   </div>
 </div>
 
@@ -306,7 +306,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut as fbSignOut
+  getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as fbSignOut
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection,
@@ -375,22 +375,11 @@ function showLoginErr(e){
   const el=document.getElementById('loginErr');
   if(el){el.textContent='Error: '+(e&&e.code?e.code:'desconocido')+' — '+(e&&e.message?e.message:'');el.style.display='block';}
 }
-function isMobileOrStandalone(){
-  try{
-    const standalone=(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
-    const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    return !!(standalone||mobile);
-  }catch(e){return false;}
-}
 function signInGoogle(){
   const provider=new GoogleAuthProvider();
   const el=document.getElementById('loginErr');
   if(el)el.style.display='none';
-  if(isMobileOrStandalone()){
-    signInWithRedirect(fbAuth, provider).catch(showLoginErr);
-  }else{
-    signInWithPopup(fbAuth, provider).catch(showLoginErr);
-  }
+  signInWithPopup(fbAuth, provider).catch(showLoginErr);
 }
 function signOutGoogle(){
   closeModal();
@@ -1309,7 +1298,6 @@ onAuthStateChanged(fbAuth, function(user){
     showTeamPick();
   }
 });
-getRedirectResult(fbAuth).catch(showLoginErr);
 document.getElementById('modal').addEventListener('click', function(e){
   if(e.target && e.target.classList && e.target.classList.contains('ov')) closeModal();
 });

@@ -1,4 +1,4 @@
-const CACHE = 'voley-tracker-v4';
+const CACHE = 'voley-tracker-v5';
 const ASSETS = ['./', './index.html', './manifest.json', './icon.svg', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -17,16 +17,16 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
   if (url.origin !== self.location.origin) return;
+  // Network-first for same-origin requests: always prefer the freshest version,
+  // fall back to cache only when offline. Prevents the app from getting stuck
+  // on a stale cached copy after we ship an update.
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      if (cached) return cached;
-      return fetch(e.request).then(res => {
-        if (res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, copy));
-        }
-        return res;
-      }).catch(() => cached);
-    })
+    fetch(e.request).then(res => {
+      if (res.ok) {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, copy));
+      }
+      return res;
+    }).catch(() => caches.match(e.request))
   );
 });
