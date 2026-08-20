@@ -10,7 +10,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="apple-touch-icon" href="icon.svg">
+<meta name="apple-mobile-web-app-title" content="Vóley Tracker">
+<link rel="apple-touch-icon" href="icon-180.png">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.30.0/iconfont/tabler-icons.min.css">
 <style>
 :root{
@@ -287,7 +288,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as fbSignOut
+  getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut as fbSignOut
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection,
@@ -354,7 +355,7 @@ function careerDocRef(rid){return doc(db,'teams',teamId,'career',rid);}
 /* ---------- Auth & team ---------- */
 function signInGoogle(){
   const provider=new GoogleAuthProvider();
-  signInWithPopup(fbAuth, provider).catch(function(e){
+  signInWithRedirect(fbAuth, provider).catch(function(e){
     const el=document.getElementById('loginErr');
     if(el){el.textContent='No se pudo iniciar sesión. Probá de nuevo.';el.style.display='block';}
   });
@@ -1236,6 +1237,10 @@ onAuthStateChanged(fbAuth, function(user){
   }else{
     showTeamPick();
   }
+});
+getRedirectResult(fbAuth).catch(function(e){
+  const el=document.getElementById('loginErr');
+  if(el){el.textContent='No se pudo completar el inicio de sesión ('+(e&&e.code?e.code:'error')+'). Probá de nuevo.';el.style.display='block';}
 });
 
 document.getElementById('modal').addEventListener('click', function(e){
