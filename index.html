@@ -176,7 +176,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Iniciá sesión para acceder al equipo</div>
     <button class="btn-pri" style="max-width:260px;margin:0 auto" onclick="signInGoogle()"><i class="ti ti-brand-google" aria-hidden="true"></i> Iniciar sesión con Google</button>
     <div class="errmsg" id="loginErr" style="display:none;margin-top:10px"></div>
-    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-20.8</div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-20.9</div>
   </div>
 </div>
 
@@ -706,9 +706,30 @@ function renderCard(p){
     '</div></div>';
 }
 function openProfile(id){
+  try{
+    openProfileInner(id);
+  }catch(err){
+    const p=P(id);
+    document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet"><div class="grab"></div>'+
+      '<div class="sh-head"><div style="flex:1;font-size:15px;font-weight:500;color:var(--text-danger)">Error al abrir la ficha</div>'+
+      '<button class="ico" style="border:none;width:30px;height:30px" onclick="closeModal()" aria-label="Cerrar"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
+      '<div style="font-size:12px;color:var(--text-primary);margin-bottom:10px">'+esc(err&&err.message?err.message:String(err))+'</div>'+
+      '<div class="sec-t">Datos del jugador (para diagnóstico)</div>'+
+      '<div style="font-size:11px;color:var(--text-muted);white-space:pre-wrap;word-break:break-all;background:var(--surface-1);border-radius:8px;padding:8px">'+esc(JSON.stringify(p,null,1))+'</div>'+
+      '<div class="sec-t">Historial de carrera (para diagnóstico)</div>'+
+      '<div style="font-size:11px;color:var(--text-muted);white-space:pre-wrap;word-break:break-all;background:var(--surface-1);border-radius:8px;padding:8px">'+esc(JSON.stringify(p&&p.rid?st.career[p.rid]:null,null,1))+'</div>'+
+      '</div></div>';
+  }
+}
+function openProfileInner(id){
   const p=P(id);if(!p)return;
-  const career=p.rid?st.career[p.rid]:null;
-  const matches=st.matches.filter(function(m){return m.players.some(function(mp){return mp.rid===p.rid;});});
+  const rawCareer=p.rid?st.career[p.rid]:null;
+  const career=rawCareer?{
+    matches:rawCareer.matches||0, puntos:rawCareer.puntos||0,
+    ataque:Object.assign({g:0,b:0},rawCareer.ataque), bloque:Object.assign({g:0,b:0},rawCareer.bloque),
+    recep:Object.assign({g:0,b:0},rawCareer.recep), saque:Object.assign({g:0,b:0},rawCareer.saque)
+  }:null;
+  const matches=st.matches.filter(function(m){return (m.players||[]).some(function(mp){return mp.rid===p.rid;});});
   const statCard=function(lbl,val){return '<div style="background:var(--surface-1);border-radius:8px;padding:8px 10px"><div style="font-size:11px;color:var(--text-secondary)">'+lbl+'</div><div style="font-size:16px;font-weight:500;color:var(--text-primary)">'+val+'</div></div>';};
   const careerHtml=(career&&career.matches)?
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">'+
