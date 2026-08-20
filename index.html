@@ -176,7 +176,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Iniciá sesión para acceder al equipo</div>
     <button class="btn-pri" style="max-width:260px;margin:0 auto" onclick="signInGoogle()"><i class="ti ti-brand-google" aria-hidden="true"></i> Iniciar sesión con Google</button>
     <div class="errmsg" id="loginErr" style="display:none;margin-top:10px"></div>
-    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-20.11</div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-20.12</div>
   </div>
 </div>
 
@@ -249,12 +249,10 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
     </div>
     <div class="fg"><label class="fl">&nbsp;</label><button class="ico" onclick="addP()" aria-label="Agregar"><i class="ti ti-plus" aria-hidden="true"></i></button></div>
   </div>
-  <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);margin-top:8px;cursor:pointer">
-    <input type="checkbox" id="pStart" checked style="width:auto;height:auto"> Es titular (queda en cancha)
-  </label>
+  <div style="font-size:11px;color:var(--text-muted);margin-top:2px">La titularidad y posición se eligen al empezar cada partido, no acá.</div>
   <div class="errmsg" id="serr" style="display:none"></div>
-  <div id="titSec"></div>
-  <div id="benchSec"></div>
+  <div class="sec-t" id="rosterTitle">Plantel</div>
+  <div id="rosterSec"></div>
   <div style="margin-top:10px">
     <button class="btn-sec" style="color:var(--text-danger);border-color:var(--border-danger)" onclick="confirmClearRoster()"><i class="ti ti-trash" aria-hidden="true"></i> Borrar plantel del equipo</button>
   </div>
@@ -333,7 +331,8 @@ const METRICS=[['bloque','Bloque',true],['recep','Recepción',false],['ataque','
 const MLBL={bloque:'Bloque',recep:'Recepción',ataque:'Ataque',saque:'Saque'};
 
 let st={teamName:'',teamLogo:null,teamDescription:'',players:[],score:{us:0,them:0},set:1,serving:'us',rallies:[],career:{},matches:[],
-  setHistory:[],opponent:'',matchName:'',matchPlace:'',matchDate:''};
+  setHistory:[],opponent:'',matchName:'',matchPlace:'',matchDate:'',active:false};
+let lineupDraft={}, pendingMatchDate='';
 let selId=null, subForId=null;
 let currentUser=null, teamId=null, unsubs=[];
 
@@ -542,6 +541,7 @@ function startTeamListeners(){
     st.matchPlace=d.matchPlace||'';
     st.matchDate=d.matchDate||'';
     st.setHistory=d.setHistory||[];
+    st.active=!!d.active;
     rerenderCurrentScreen();
   }));
   unsubs.push(onSnapshot(query(ralliesCol(), orderBy('ts','asc')), function(qs){
@@ -578,10 +578,15 @@ function rHome(){
   document.getElementById('homeMsg').style.display='none';
   renderTeamLogoPreview();
   renderHomeDesc();
+  const matchCard=st.active
+    ?'<div class="mcard" onclick="showSc(\'match\')"><div class="micon" style="background:var(--bg-accent);color:var(--text-accent)"><i class="ti ti-player-play" aria-hidden="true"></i></div>'+
+     '<div class="mtxt"><div class="mtitle">Partido en curso</div><div class="msub">Continuar el partido que dejaste abierto</div></div>'+
+     '<i class="ti ti-chevron-right mchev" aria-hidden="true"></i></div>'
+    :'<div class="mcard" onclick="goNewMatch()"><div class="micon" style="background:var(--bg-accent);color:var(--text-accent)"><i class="ti ti-player-play" aria-hidden="true"></i></div>'+
+     '<div class="mtxt"><div class="mtitle">Nuevo partido</div><div class="msub">Registrar un partido en vivo</div></div>'+
+     '<i class="ti ti-chevron-right mchev" aria-hidden="true"></i></div>';
   document.getElementById('homeList').innerHTML=
-    '<div class="mcard" onclick="goNewMatch()"><div class="micon" style="background:var(--bg-accent);color:var(--text-accent)"><i class="ti ti-player-play" aria-hidden="true"></i></div>'+
-    '<div class="mtxt"><div class="mtitle">Nuevo partido</div><div class="msub">Registrar un partido en vivo</div></div>'+
-    '<i class="ti ti-chevron-right mchev" aria-hidden="true"></i></div>'+
+    matchCard+
     '<div class="mcard" onclick="showSc(\'equipo\')"><div class="micon" style="background:var(--bg-pro);color:var(--text-pro)"><i class="ti ti-users" aria-hidden="true"></i></div>'+
     '<div class="mtxt"><div class="mtitle">Equipo</div><div class="msub">'+n+' jugador'+(n===1?'':'es')+' en el plantel</div></div>'+
     '<i class="ti ti-chevron-right mchev" aria-hidden="true"></i></div>'+
@@ -590,8 +595,8 @@ function rHome(){
     '<i class="ti ti-chevron-right mchev" aria-hidden="true"></i></div>';
 }
 async function goNewMatch(){
-  if(st.players.filter(function(p){return p.starter;}).length===0){
-    showHomeMsg('Configura tu equipo primero: necesitas al menos un titular.');
+  if(st.players.length===0){
+    showHomeMsg('Agrega jugadores a tu equipo primero.');
     return;
   }
   showSc('match');
@@ -599,12 +604,59 @@ async function goNewMatch(){
   st.players.forEach(function(p){batch.update(rosterDoc(p.id),{stats:newStat(),note:''});});
   try{await batch.commit();}catch(e){}
   await clearRallies();
-  const dstr=todayStr();
+  pendingMatchDate=todayStr();
   updateDoc(liveRef(),{
-    active:true,opponent:'',matchName:'',matchPlace:'',matchDate:dstr,
+    active:true,opponent:'',matchName:'',matchPlace:'',matchDate:pendingMatchDate,
     'score.us':0,'score.them':0,set:1,setHistory:[]
   }).catch(function(){});
-  askServeAndOpponent(dstr);
+  openLineupSetup();
+}
+function openLineupSetup(){
+  lineupDraft={};
+  st.players.forEach(function(p){if(p.starter&&p.position)lineupDraft[p.position]=p.id;});
+  renderLineupSetup();
+}
+function renderLineupSetup(){
+  const rows=[1,2,3,4,5,6].map(function(pos){
+    const rid=lineupDraft[pos];const p=rid?P(rid):null;
+    const content=p
+      ?'<div class="pbadge" style="background:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</div><div style="flex:1;font-size:13px;color:var(--text-primary)">'+esc(p.name)+'</div><button class="btn-sec" onclick="pickLineupSlot('+pos+')">Cambiar</button>'
+      :'<div style="flex:1;color:var(--text-muted);font-size:12px">Sin asignar</div><button class="btn-sec" onclick="pickLineupSlot('+pos+')">Elegir</button>';
+    return '<div class="prow"><span class="ptag">Pos '+pos+'</span>'+content+'</div>';
+  }).join('');
+  document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet"><div class="grab"></div>'+
+    '<div class="sh-head"><div style="flex:1;font-size:15px;font-weight:500;color:var(--text-primary)">Formación inicial</div>'+
+    '<button class="ico" style="border:none;width:30px;height:30px" onclick="cancelNewMatch()" aria-label="Cancelar"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
+    '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px">Elegí qué jugador ocupa cada posición para este partido. Los que no asignes quedan en banca.</div>'+
+    '<div class="plist">'+rows+'</div>'+
+    '<button class="btn-pri" style="margin-top:10px" onclick="confirmLineup()">Continuar</button>'+
+    '</div></div>';
+}
+function pickLineupSlot(pos){
+  const usedRids={};Object.keys(lineupDraft).forEach(function(k){if(Number(k)!==pos)usedRids[lineupDraft[k]]=true;});
+  const avail=st.players.filter(function(p){return !usedRids[p.id];});
+  let chipsHtml=avail.map(function(p){return '<button class="chip" onclick="setLineupSlot('+pos+',\''+p.id+'\')"><b style="color:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</b> '+esc(p.name)+'</button>';}).join('');
+  if(lineupDraft[pos])chipsHtml+='<button class="chip" style="color:var(--text-danger);border-color:var(--border-danger)" onclick="setLineupSlot('+pos+',null)">Dejar vacío</button>';
+  if(!chipsHtml)chipsHtml='<p style="font-size:12px;color:var(--text-muted)">No quedan jugadores disponibles.</p>';
+  document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet" style="max-width:360px"><div class="grab"></div>'+
+    '<div class="sh-head"><div style="flex:1;font-size:15px;font-weight:500;color:var(--text-primary)">¿Quién ocupa la posición '+pos+'?</div>'+
+    '<button class="ico" style="border:none;width:30px;height:30px" onclick="renderLineupSetup()" aria-label="Volver"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
+    '<div class="chips">'+chipsHtml+'</div>'+
+    '</div></div>';
+}
+function setLineupSlot(pos,rid){
+  if(rid)lineupDraft[pos]=rid;else delete lineupDraft[pos];
+  renderLineupSetup();
+}
+async function confirmLineup(){
+  const assignedPos={};Object.keys(lineupDraft).forEach(function(k){assignedPos[lineupDraft[k]]=Number(k);});
+  const batch=writeBatch(db);
+  st.players.forEach(function(p){
+    const pos=assignedPos[p.id]||null;
+    batch.update(rosterDoc(p.id),{starter:!!pos,position:pos});
+  });
+  try{await batch.commit();}catch(e){}
+  askServeAndOpponent(pendingMatchDate);
 }
 async function clearRallies(){
   try{
@@ -621,59 +673,31 @@ function addP(){
   const nm=document.getElementById('pNm').value.trim();
   const no=document.getElementById('pNo').value.trim();
   const rl=document.getElementById('pRl').value;
-  const starter=document.getElementById('pStart').checked;
   const er=document.getElementById('serr');
   if(!nm){showE(er,'Ingresa el nombre.');return;}
   if(!no){showE(er,'Ingresa el número.');return;}
   if(st.players.find(function(p){return p.number===no;})){showE(er,'El número '+no+' ya está en uso.');return;}
-  const starters=st.players.filter(function(p){return p.starter;});
-  if(starter&&starters.length>=6){showE(er,'Ya tienes 6 titulares. Márcalo como suplente.');return;}
   hideE(er);
-  let position=null;
-  if(starter){
-    const taken=new Set(starters.map(function(p){return p.position;}));
-    for(let i=1;i<=6;i++){if(!taken.has(i)){position=i;break;}}
-  }
   addDoc(rosterCol(),{
-    name:nm,number:no,role:rl,starter:starter,position:position,secondaryRoles:[],
+    name:nm,number:no,role:rl,starter:false,position:null,secondaryRoles:[],
     attrs:{ataque:50,recep:50,saque:50,salto:50,ritmo:50,mental:50},photo:null,note:'',stats:newStat()
   }).catch(function(){showE(er,'No se pudo agregar. Probá de nuevo.');});
   document.getElementById('pNm').value='';document.getElementById('pNo').value='';document.getElementById('pNm').focus();
 }
 function rmP(id){deleteDoc(rosterDoc(id)).catch(function(){});}
-function toggleStarter(id){
-  const p=P(id);if(!p)return;
-  const er=document.getElementById('serr');
-  if(p.starter){
-    updateDoc(rosterDoc(id),{starter:false,position:null}).catch(function(){});
-  }else{
-    const starters=st.players.filter(function(x){return x.starter;});
-    if(starters.length>=6){showE(er,'Ya tienes 6 titulares. Saca a alguno primero.');return;}
-    const taken=new Set(starters.map(function(x){return x.position;}));
-    let pos=null;for(let i=1;i<=6;i++){if(!taken.has(i)){pos=i;break;}}
-    hideE(er);
-    updateDoc(rosterDoc(id),{starter:true,position:pos}).catch(function(){});
-  }
-}
 function rSetup(){
   renderTeamLogoPreview();
-  const tit=st.players.filter(function(p){return p.starter;}).sort(function(a,b){return a.position-b.position;});
-  const ben=st.players.filter(function(p){return !p.starter;});
-  document.getElementById('titSec').innerHTML='<div class="sec-t">Titulares ('+tit.length+'/6)</div>'+
-    (tit.length?'<div class="plist">'+tit.map(rowHtml).join('')+'</div>':'<p style="font-size:12px;color:var(--text-muted)">Aún no hay titulares.</p>');
-  document.getElementById('benchSec').innerHTML='<div class="sec-t">Suplentes ('+ben.length+')</div>'+
-    (ben.length?'<div class="plist">'+ben.map(rowHtml).join('')+'</div>':'<p style="font-size:12px;color:var(--text-muted)">Sin suplentes.</p>');
+  const all=st.players.slice().sort(function(a,b){return a.name.localeCompare(b.name);});
+  document.getElementById('rosterTitle').textContent='Plantel ('+all.length+')';
+  document.getElementById('rosterSec').innerHTML=all.length?'<div class="plist">'+all.map(rowHtml).join('')+'</div>':'<p style="font-size:12px;color:var(--text-muted)">Aún no hay jugadores.</p>';
 }
 function rowHtml(p){
-  const toggleBtn='<button class="btn-sec" style="padding:4px 8px;font-size:11px;white-space:nowrap" onclick="toggleStarter(\''+p.id+'\')">'+(p.starter?'A banca':'A titular')+'</button>';
   return '<div class="prow">'+
     '<div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;cursor:pointer" onclick="openProfile(\''+p.id+'\')">'+
     '<div class="pbadge" style="background:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</div>'+
     '<div style="font-size:13px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(p.name)+'</div>'+
     '</div>'+
     '<span class="rtag">'+(RN[p.role]||'Jugador')+'</span>'+
-    (p.starter?'<span class="ptag">Pos '+p.position+'</span>':'<span class="btag">Banca</span>')+
-    toggleBtn+
     '<button class="ico" style="width:30px;height:30px;border-color:var(--border-danger)" onclick="rmP(\''+p.id+'\')" aria-label="Eliminar"><i class="ti ti-trash" aria-hidden="true" style="color:var(--text-danger);font-size:14px"></i></button></div>';
 }
 
@@ -845,7 +869,10 @@ async function clearRoster(){
 }
 
 /* ---------- Match setup ---------- */
-function cancelNewMatch(){closeModal();showSc('home');}
+function cancelNewMatch(){
+  updateDoc(liveRef(),{active:false}).catch(function(){});
+  closeModal();showSc('home');
+}
 function askServeAndOpponent(dateVal){
   document.getElementById('modal').innerHTML=
     '<div class="ov"><div class="sheet" style="max-width:380px"><div class="grab"></div>'+
@@ -950,12 +977,12 @@ function rPanel(){
   const s=iSt(p);const col=RC[p.role]||'#888';
   const rows=METRICS.map(function(m){
     const k=m[0],lbl=m[1],canScore=m[2];
-    const trophy=canScore?'<button class="arrow trophy" onclick="scoreAction(\''+p.id+'\',\''+k+'\')" aria-label="'+lbl+' fue punto"><i class="ti ti-trophy" aria-hidden="true"></i></button>':'';
+    const trophy=canScore?'<button class="arrow trophy" onclick="scoreAction(\''+p.id+'\',\''+k+'\')" aria-label="'+lbl+' fue punto"><i class="ti ti-trophy" aria-hidden="true"></i></button>':'<span class="arrow" style="border:none;visibility:hidden" aria-hidden="true"></span>';
     return '<div class="mrow"><span class="mlbl">'+lbl+'</span><div class="mctl">'+
+    trophy+
     '<button class="arrow up" onclick="bump(\''+p.id+'\',\''+k+'\',\'g\',1)" aria-label="'+lbl+' bien"><i class="ti ti-arrow-up" aria-hidden="true"></i></button>'+
     '<span class="mval"><span class="g" title="tocar para corregir" onclick="bump(\''+p.id+'\',\''+k+'\',\'g\',-1)">'+s[k].g+'</span> <span class="sl">/</span> <span class="b" title="tocar para corregir" onclick="bump(\''+p.id+'\',\''+k+'\',\'b\',-1)">'+s[k].b+'</span></span>'+
     '<button class="arrow dn" onclick="bump(\''+p.id+'\',\''+k+'\',\'b\',1)" aria-label="'+lbl+' mal"><i class="ti ti-arrow-down" aria-hidden="true"></i></button>'+
-    trophy+
     '</div></div>';
   }).join('');
   panel.innerHTML=
@@ -1072,12 +1099,17 @@ function confirmPoint(){
 }
 
 function openSub(id){
-  subForId=id;const out=P(id);const bench=st.players.filter(function(p){return !p.starter;});
+  subForId=id;const out=P(id);
+  const bench=st.players.filter(function(p){return !p.starter;});
+  const onCourt=st.players.filter(function(p){return p.starter&&p.id!==id;});
+  const rowSub=function(p,action){return '<div class="prow" onclick="'+action+'" style="cursor:pointer"><div class="pbadge" style="background:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</div><div style="flex:1;font-size:13px">'+esc(p.name)+'</div><span class="rtag">'+(RN[p.role]||'Jugador')+'</span>'+(p.starter?'<span class="ptag">Pos '+p.position+'</span>':'')+'<i class="ti ti-arrow-right" aria-hidden="true" style="color:var(--text-accent)"></i></div>';};
   document.getElementById('modal').innerHTML=
     '<div class="ov"><div class="sheet"><div class="grab"></div>'+
     '<div style="font-size:15px;font-weight:500;color:var(--text-primary);margin-bottom:2px">Reemplazar a #'+esc(out.number)+' '+esc(out.name)+'</div>'+
     '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Entra desde la banca:</div>'+
-    (bench.length?'<div class="plist">'+bench.map(function(p){return '<div class="prow" onclick="doSub(\''+p.id+'\')" style="cursor:pointer"><div class="pbadge" style="background:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</div><div style="flex:1;font-size:13px">'+esc(p.name)+'</div><span class="rtag">'+(RN[p.role]||'Jugador')+'</span><i class="ti ti-arrow-right" aria-hidden="true" style="color:var(--text-accent)"></i></div>';}).join('')+'</div>':'<p style="font-size:12px;color:var(--text-muted)">No hay suplentes disponibles.</p>')+
+    (bench.length?'<div class="plist">'+bench.map(function(p){return rowSub(p,"doSub(\'"+p.id+"\')");}).join('')+'</div>':'<p style="font-size:12px;color:var(--text-muted)">No hay suplentes disponibles.</p>')+
+    '<div style="font-size:12px;color:var(--text-secondary);margin:10px 0 8px">O rotá posición con otro jugador en cancha:</div>'+
+    (onCourt.length?'<div class="plist">'+onCourt.map(function(p){return rowSub(p,"doPositionSwap(\'"+id+"\',\'"+p.id+"\')");}).join('')+'</div>':'<p style="font-size:12px;color:var(--text-muted)">No hay otros jugadores en cancha.</p>')+
     '<button class="btn-sec" style="width:100%;margin-top:8px" onclick="closeModal()">Cancelar</button>'+
     '</div></div>';
 }
@@ -1089,6 +1121,15 @@ function doSub(inId){
   batch.update(rosterDoc(out.id),{starter:false,position:null});
   batch.commit().catch(function(){});
   selId=inn.id;
+  closeModal();
+}
+function doPositionSwap(outId,otherId){
+  const out=P(outId),other=P(otherId);
+  if(!out||!other)return;
+  const batch=writeBatch(db);
+  batch.update(rosterDoc(out.id),{position:other.position});
+  batch.update(rosterDoc(other.id),{position:out.position});
+  batch.commit().catch(function(){});
   closeModal();
 }
 
@@ -1360,12 +1401,13 @@ if('serviceWorker' in navigator){
 
 Object.assign(window, {
   signInGoogle, signOutGoogle, openAccountMenu, copyTeamCode, leaveTeam, createTeam, joinTeam, setTeamName,
-  showSc, goNewMatch, addP, rmP, toggleStarter, openProfile, openEditAttrs, setAttr, handlePhotoFile, removePhoto,
+  showSc, goNewMatch, addP, rmP, openProfile, openEditAttrs, setAttr, handlePhotoFile, removePhoto,
   confirmClearRoster, clearRoster, cancelNewMatch, finishNewMatchSetup, askServe, setServe, selectP, bump,
-  savePNote, scoreAction, pointUs, pointThem, pickAuthor, confirmPoint, openSub, doSub, openHist, openRally,
+  savePNote, scoreAction, pointUs, pointThem, pickAuthor, confirmPoint, openSub, doSub, doPositionSwap, openHist, openRally,
   editAuthor, editNote, delRally, openMenu, doRotate, nextSet, confirmFinalize, finalizeMatch, openMatchDetail,
   showStats, closeModal, st, handleLogoFile, openFormation, pickSwap, doSwapPos, setTeamDescription,
-  setPlayerRole, toggleSecondaryRole, confirmDeleteMatch, deleteMatchRecord
+  setPlayerRole, toggleSecondaryRole, confirmDeleteMatch, deleteMatchRecord,
+  openLineupSetup, pickLineupSlot, setLineupSlot, confirmLineup
 });
 </script>
 </body>
