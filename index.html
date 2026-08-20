@@ -1285,6 +1285,12 @@ if('serviceWorker' in navigator){
   });
 }
 
+try{
+  if(screen.orientation && screen.orientation.lock){
+    screen.orientation.lock('landscape').catch(function(){});
+  }
+}catch(e){}
+
 Object.assign(window, {
   signInGoogle, signOutGoogle, openAccountMenu, copyTeamCode, leaveTeam, createTeam, joinTeam, setTeamName,
   showSc, goNewMatch, addP, rmP, toggleStarter, openProfile, openEditAttrs, setAttr, handlePhotoFile, removePhoto,
