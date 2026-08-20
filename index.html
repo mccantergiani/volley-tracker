@@ -671,7 +671,7 @@ function rowHtml(p){
     '<div class="pbadge" style="background:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</div>'+
     '<div style="font-size:13px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(p.name)+'</div>'+
     '</div>'+
-    '<span class="rtag">'+RN[p.role]+'</span>'+
+    '<span class="rtag">'+(RN[p.role]||'Jugador')+'</span>'+
     (p.starter?'<span class="ptag">Pos '+p.position+'</span>':'<span class="btag">Banca</span>')+
     toggleBtn+
     '<button class="ico" style="width:30px;height:30px;border-color:var(--border-danger)" onclick="rmP(\''+p.id+'\')" aria-label="Eliminar"><i class="ti ti-trash" aria-hidden="true" style="color:var(--text-danger);font-size:14px"></i></button></div>';
@@ -692,7 +692,7 @@ function renderCard(p){
     'linear-gradient(160deg,#e7c9a5,#b8804c 55%,#8a5a30)';
   return '<div class="fcard" style="background:'+bg+'">'+
     '<div class="fcard-tier">'+tier.toUpperCase()+'</div>'+
-    '<div class="fcard-top"><div><div class="fcard-ovr">'+o+'</div><div class="fcard-pos">'+RN[p.role].toUpperCase()+'</div></div>'+
+    '<div class="fcard-top"><div><div class="fcard-ovr">'+o+'</div><div class="fcard-pos">'+(RN[p.role]||'Jugador').toUpperCase()+'</div></div>'+
     '<div class="fcard-num">#'+esc(p.number)+'</div></div>'+
     '<div class="fcard-photo">'+(p.photo?'<img src="'+p.photo+'" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">':'<i class="ti ti-shirt-sport" aria-hidden="true"></i>')+'</div>'+
     '<div class="fcard-name">'+esc(p.name)+'</div>'+
@@ -940,7 +940,7 @@ function rPanel(){
   panel.innerHTML=
     '<div class="sh-head" style="cursor:pointer" onclick="openProfile(\''+p.id+'\')"><div class="pbadge" style="width:34px;height:34px;font-size:13px;background:'+col+'">'+esc(p.number)+'</div>'+
     '<div style="flex:1"><div style="font-size:14px;font-weight:500;color:var(--text-primary)">'+esc(p.name)+'</div>'+
-    '<div style="font-size:11px;color:var(--text-secondary)">'+RN[p.role]+' · Pos '+p.position+' · <span style="color:var(--text-accent);font-weight:500">'+s.puntos+' pts</span></div></div>'+
+    '<div style="font-size:11px;color:var(--text-secondary)">'+(RN[p.role]||'Jugador')+' · Pos '+p.position+' · <span style="color:var(--text-accent);font-weight:500">'+s.puntos+' pts</span></div></div>'+
     '<button class="ico" style="width:30px;height:30px;border:none" onclick="event.stopPropagation();selectP(null)" aria-label="Cerrar"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
     '<div style="font-size:10px;color:var(--text-muted);display:flex;justify-content:space-between;padding:0 2px 2px">'+
     '<span><i class="ti ti-arrow-up" aria-hidden="true" style="color:var(--text-success)"></i> bien &nbsp; <i class="ti ti-arrow-down" aria-hidden="true" style="color:var(--text-danger)"></i> mal</span>'+
@@ -1056,7 +1056,7 @@ function openSub(id){
     '<div class="ov"><div class="sheet"><div class="grab"></div>'+
     '<div style="font-size:15px;font-weight:500;color:var(--text-primary);margin-bottom:2px">Reemplazar a #'+esc(out.number)+' '+esc(out.name)+'</div>'+
     '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Entra desde la banca:</div>'+
-    (bench.length?'<div class="plist">'+bench.map(function(p){return '<div class="prow" onclick="doSub(\''+p.id+'\')" style="cursor:pointer"><div class="pbadge" style="background:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</div><div style="flex:1;font-size:13px">'+esc(p.name)+'</div><span class="rtag">'+RN[p.role]+'</span><i class="ti ti-arrow-right" aria-hidden="true" style="color:var(--text-accent)"></i></div>';}).join('')+'</div>':'<p style="font-size:12px;color:var(--text-muted)">No hay suplentes disponibles.</p>')+
+    (bench.length?'<div class="plist">'+bench.map(function(p){return '<div class="prow" onclick="doSub(\''+p.id+'\')" style="cursor:pointer"><div class="pbadge" style="background:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</div><div style="flex:1;font-size:13px">'+esc(p.name)+'</div><span class="rtag">'+(RN[p.role]||'Jugador')+'</span><i class="ti ti-arrow-right" aria-hidden="true" style="color:var(--text-accent)"></i></div>';}).join('')+'</div>':'<p style="font-size:12px;color:var(--text-muted)">No hay suplentes disponibles.</p>')+
     '<button class="btn-sec" style="width:100%;margin-top:8px" onclick="closeModal()">Cancelar</button>'+
     '</div></div>';
 }
