@@ -176,7 +176,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Iniciá sesión para acceder al equipo</div>
     <button class="btn-pri" style="max-width:260px;margin:0 auto" onclick="signInGoogle()"><i class="ti ti-brand-google" aria-hidden="true"></i> Iniciar sesión con Google</button>
     <div class="errmsg" id="loginErr" style="display:none;margin-top:10px"></div>
-    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-21.4</div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-21.5</div>
   </div>
 </div>
 
@@ -960,6 +960,8 @@ function openProfileInner(id){
     '<button class="btn-sec" onclick="document.getElementById(\'photoInp\').click()"><i class="ti ti-camera" aria-hidden="true"></i> '+(p.photo?'Cambiar foto':'Agregar foto')+'</button> '+
     (p.photo?'<button class="btn-sec" style="color:var(--text-danger);border-color:var(--border-danger)" onclick="removePhoto(\''+p.id+'\')" aria-label="Quitar foto"><i class="ti ti-trash" aria-hidden="true"></i></button>':'')+
     '</div>'+
+    '<div class="sec-t">Número de camiseta</div>'+
+    '<div class="fg" style="max-width:120px;margin-bottom:8px"><input type="number" min="1" max="99" value="'+esc(p.number)+'" onchange="setPlayerNumber(\''+p.id+'\',this.value)"></div>'+
     '<div class="sec-t">Rol y posiciones</div>'+
     '<div class="fg" style="margin-bottom:8px;max-width:180px"><label class="fl">Género</label>'+
     '<select onchange="setPlayerGender(\''+p.id+'\',this.value)">'+Object.keys(GN).map(function(g){return '<option value="'+g+'"'+(g===(p.gender||'M')?' selected':'')+'>'+GN[g]+'</option>';}).join('')+'</select></div>'+
@@ -986,6 +988,17 @@ function setPlayerGender(id,gender){
   const p=P(id);if(!p)return;
   updateDoc(rosterDoc(id),{gender:gender}).catch(function(){});
   p.gender=gender;
+  openProfile(id);
+}
+function setPlayerNumber(id,val){
+  if(!guardEdit())return;
+  const p=P(id);if(!p)return;
+  const nm=String(val).trim();
+  if(!nm){showToast('Ingresá un número.');openProfile(id);return;}
+  const dup=st.players.find(function(x){return x.id!==id&&x.number===nm;});
+  if(dup){showToast('El número '+nm+' ya lo tiene '+dup.name+'.');openProfile(id);return;}
+  p.number=nm;
+  updateDoc(rosterDoc(id),{number:nm}).catch(function(){});
   openProfile(id);
 }
 function toggleSecondaryRole(id,role){
@@ -1603,7 +1616,7 @@ Object.assign(window, {
   savePNote, scoreAction, pointUs, pointThem, pickAuthor, confirmPoint, openSub, doSub, doPositionSwap, openHist, openRally,
   editAuthor, editNote, delRally, openMenu, doRotate, nextSet, confirmFinalize, finalizeMatch, openMatchDetail,
   showStats, closeModal, st, handleLogoFile, setTeamDescription,
-  setPlayerRole, setPlayerGender, toggleSecondaryRole, confirmDeleteMatch, deleteMatchRecord,
+  setPlayerRole, setPlayerGender, setPlayerNumber, toggleSecondaryRole, confirmDeleteMatch, deleteMatchRecord,
   openLineupSetup, pickLineupSlot, setLineupSlot, confirmLineup, confirmDiscardMatch,
   openMembers, setMemberRole
 });
