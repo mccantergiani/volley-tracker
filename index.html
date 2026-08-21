@@ -176,7 +176,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Iniciá sesión para acceder al equipo</div>
     <button class="btn-pri" style="max-width:260px;margin:0 auto" onclick="signInGoogle()"><i class="ti ti-brand-google" aria-hidden="true"></i> Iniciar sesión con Google</button>
     <div class="errmsg" id="loginErr" style="display:none;margin-top:10px"></div>
-    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-21.2</div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-21.3</div>
   </div>
 </div>
 
@@ -352,7 +352,8 @@ const METRICS=[['bloque','Bloque',true],['recep','Recepción',false],['ataque','
 const MLBL={bloque:'Bloque',recep:'Recepción',ataque:'Ataque',saque:'Saque'};
 
 let st={teamName:'',teamLogo:null,teamDescription:'',players:[],score:{us:0,them:0},set:1,serving:'us',rallies:[],career:{},matches:[],
-  setHistory:[],opponent:'',matchName:'',matchPlace:'',matchDate:'',active:false,participants:[]};
+  setHistory:[],opponent:'',matchName:'',matchPlace:'',matchDate:'',active:false,participants:[],
+  members:[],myRole:'viewer'};
 let lineupDraft={}, pendingMatchDate='';
 let selId=null, subForId=null;
 let currentUser=null, teamId=null, unsubs=[];
@@ -390,6 +391,27 @@ function rallyDocRef(rid){return doc(db,'teams',teamId,'live','current','rallies
 function matchesCol(){return collection(db,'teams',teamId,'matches');}
 function careerCol(){return collection(db,'teams',teamId,'career');}
 function careerDocRef(rid){return doc(db,'teams',teamId,'career',rid);}
+function membersCol(){return collection(db,'teams',teamId,'members');}
+function memberDocRef(uid){return doc(db,'teams',teamId,'members',uid);}
+function isEditor(){return st.myRole==='editor';}
+function guardEdit(){
+  if(isEditor())return true;
+  showToast('Estás en modo solo lectura. Pedile a un editor que te ascienda desde "Miembros".');
+  return false;
+}
+function showToast(msg){
+  let t=document.getElementById('toast');
+  if(!t){
+    t=document.createElement('div');
+    t.id='toast';
+    t.style.cssText='position:fixed;left:50%;bottom:20px;transform:translateX(-50%);max-width:90%;background:var(--surface-2);color:var(--text-primary);border:0.5px solid var(--border-strong);border-radius:8px;padding:10px 14px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,0.25);z-index:20;text-align:center';
+    document.body.appendChild(t);
+  }
+  t.textContent=msg;
+  t.style.display='block';
+  clearTimeout(t._hideT);
+  t._hideT=setTimeout(function(){t.style.display='none';},3000);
+}
 
 /* ---------- Auth & team ---------- */
 function showLoginErr(e){
@@ -412,10 +434,34 @@ function showTeamPick(){
   const el=document.getElementById('tpEmail');if(el)el.textContent=currentUser?currentUser.email:'';
   showSc('teampick');
 }
-function enterTeam(){
+async function enterTeam(){
   try{localStorage.setItem('vb_teamId', teamId);}catch(e){}
+  await ensureMembership();
   showSc('home');
   startTeamListeners();
+  startMembersListener();
+}
+async function ensureMembership(){
+  try{
+    const memberSnap=await getDoc(memberDocRef(currentUser.uid));
+    if(memberSnap.exists())return;
+    const teamSnap=await getDoc(doc(db,'teams',teamId));
+    const teamData=teamSnap.exists()?teamSnap.data():{};
+    if(!teamData.ownerUid){
+      await updateDoc(doc(db,'teams',teamId),{ownerUid:currentUser.uid});
+      await setDoc(memberDocRef(currentUser.uid),{email:currentUser.email,name:currentUser.displayName||currentUser.email,role:'editor',joinedAt:serverTimestamp()});
+    }else{
+      await setDoc(memberDocRef(currentUser.uid),{email:currentUser.email,name:currentUser.displayName||currentUser.email,role:'viewer',joinedAt:serverTimestamp()});
+    }
+  }catch(e){}
+}
+function startMembersListener(){
+  unsubs.push(onSnapshot(membersCol(), function(qs){
+    st.members=qs.docs.map(function(d){return Object.assign({uid:d.id}, d.data());});
+    const me=st.members.find(function(m){return m.uid===(currentUser&&currentUser.uid);});
+    st.myRole=me?me.role:'viewer';
+    rerenderCurrentScreen();
+  }));
 }
 function genTeamCode(){
   const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -431,10 +477,10 @@ function createTeam(){
     .then(function(){
       return setDoc(doc(db,'teams',code,'live','current'),{
         active:false,opponent:'',matchName:'',matchPlace:'',matchDate:'',
-        score:{us:0,them:0},set:1,serving:'us',setHistory:[]
+        score:{us:0,them:0},set:1,serving:'us',setHistory:[],participants:[]
       });
     })
-    .then(function(){teamId=code;enterTeam();})
+    .then(function(){teamId=code;return enterTeam();})
     .catch(function(){if(er){er.textContent='No se pudo crear el equipo. Probá de nuevo.';er.style.display='block';}});
 }
 function joinTeam(){
@@ -445,7 +491,8 @@ function joinTeam(){
   getDoc(doc(db,'teams',code)).then(function(snap){
     if(!snap.exists()){if(er){er.textContent='No se encontró ese código.';er.style.display='block';}return;}
     if(er)er.style.display='none';
-    teamId=code;enterTeam();
+    teamId=code;
+    return enterTeam();
   }).catch(function(){if(er){er.textContent='Error al buscar el equipo.';er.style.display='block';}});
 }
 function openAccountMenu(){
@@ -453,15 +500,43 @@ function openAccountMenu(){
     '<div class="sh-head"><div style="flex:1;font-size:15px;font-weight:500;color:var(--text-primary)">Cuenta</div>'+
     '<button class="ico" style="border:none;width:30px;height:30px" onclick="closeModal()" aria-label="Cerrar"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
     '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">Sesión</div>'+
-    '<div style="font-size:13px;color:var(--text-primary);margin-bottom:14px">'+esc(currentUser?currentUser.email:'')+'</div>'+
+    '<div style="font-size:13px;color:var(--text-primary);margin-bottom:4px">'+esc(currentUser?currentUser.email:'')+'</div>'+
+    '<div style="margin-bottom:14px"><span class="'+(isEditor()?'ptag':'btag')+'">'+(isEditor()?'Editor':'Solo lectura')+'</span></div>'+
     '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">Código del equipo</div>'+
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'+
     '<div style="font-size:20px;font-weight:700;letter-spacing:2px;color:var(--text-accent)">'+esc(teamId||'')+'</div>'+
     '<button class="btn-sec" onclick="copyTeamCode()">Copiar</button></div>'+
-    '<div style="font-size:11px;color:var(--text-muted);margin-bottom:14px">Compartí este código con tu cuerpo técnico para que también puedan editar.</div>'+
+    '<div style="font-size:11px;color:var(--text-muted);margin-bottom:14px">Compartí este código con tu cuerpo técnico. Se unen como solo lectura hasta que los ascendás en "Miembros".</div>'+
+    '<button class="btn-sec" style="width:100%;margin-bottom:8px" onclick="openMembers()"><i class="ti ti-users-group" aria-hidden="true"></i> Miembros del equipo</button>'+
     '<button class="btn-sec" style="width:100%;margin-bottom:8px" onclick="leaveTeam()"><i class="ti ti-arrows-exchange" aria-hidden="true"></i> Cambiar de equipo</button>'+
     '<button class="btn-sec" style="width:100%;color:var(--text-danger);border-color:var(--border-danger)" onclick="signOutGoogle()"><i class="ti ti-logout" aria-hidden="true"></i> Cerrar sesión</button>'+
     '</div></div>';
+}
+function openMembers(){
+  const list=st.members.slice().sort(function(a,b){return (a.email||'').localeCompare(b.email||'');});
+  const rows=list.map(function(m){
+    const isMe=currentUser&&m.uid===currentUser.uid;
+    const actionBtn=isEditor()&&!isMe
+      ?(m.role==='editor'
+        ?'<button class="btn-sec" onclick="setMemberRole(\''+m.uid+'\',\'viewer\')">A solo lectura</button>'
+        :'<button class="btn-sec" onclick="setMemberRole(\''+m.uid+'\',\'editor\')">Ascender a editor</button>')
+      :'';
+    return '<div class="prow"><div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.name||m.email)+(isMe?' (vos)':'')+'</div>'+
+      '<div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.email||'')+'</div></div>'+
+      '<span class="'+(m.role==='editor'?'ptag':'btag')+'">'+(m.role==='editor'?'Editor':'Solo lectura')+'</span>'+
+      actionBtn+'</div>';
+  }).join('');
+  document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet"><div class="grab"></div>'+
+    '<div class="sh-head"><div style="flex:1;font-size:15px;font-weight:500;color:var(--text-primary)">Miembros del equipo</div>'+
+    '<button class="ico" style="border:none;width:30px;height:30px" onclick="openAccountMenu()" aria-label="Volver"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
+    (isEditor()?'':'<p style="font-size:11px;color:var(--text-muted);margin-bottom:10px">Solo los editores pueden cambiar roles.</p>')+
+    '<div class="plist">'+(rows||'<p style="font-size:12px;color:var(--text-muted)">Todavía no hay miembros.</p>')+'</div>'+
+    '</div></div>';
+}
+function setMemberRole(uid,role){
+  if(!guardEdit())return;
+  updateDoc(memberDocRef(uid),{role:role}).catch(function(){showToast('No se pudo cambiar el rol.');});
+  openMembers();
 }
 function copyTeamCode(){
   if(navigator.clipboard && teamId) navigator.clipboard.writeText(teamId).catch(function(){});
@@ -669,6 +744,7 @@ function stopCarouselAutoScroll(){
   if(carouselTimer){clearInterval(carouselTimer);carouselTimer=null;}
 }
 async function goNewMatch(){
+  if(!guardEdit())return;
   if(st.players.length===0){
     showHomeMsg('Agrega jugadores a tu equipo primero.');
     return;
@@ -746,6 +822,7 @@ async function clearRallies(){
 
 /* ---------- Equipo (roster) ---------- */
 function addP(){
+  if(!guardEdit())return;
   const nm=document.getElementById('pNm').value.trim();
   const no=document.getElementById('pNo').value.trim();
   const rl=document.getElementById('pRl').value;
@@ -761,7 +838,7 @@ function addP(){
   }).catch(function(){showE(er,'No se pudo agregar. Probá de nuevo.');});
   document.getElementById('pNm').value='';document.getElementById('pNo').value='';document.getElementById('pNm').focus();
 }
-function rmP(id){deleteDoc(rosterDoc(id)).catch(function(){});}
+function rmP(id){if(!guardEdit())return;deleteDoc(rosterDoc(id)).catch(function(){});}
 function rSetup(){
   renderTeamLogoPreview();
   const fg=document.getElementById('fltGender'),fr=document.getElementById('fltRole');
@@ -968,6 +1045,7 @@ function removePhoto(id){
   updateDoc(rosterDoc(id),{photo:null}).then(function(){openProfile(id);}).catch(function(){});
 }
 function confirmClearRoster(){
+  if(!guardEdit())return;
   document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet" style="max-width:340px"><div class="grab"></div>'+
   '<div style="font-size:15px;font-weight:500;color:var(--text-primary);margin-bottom:6px">Borrar plantel del equipo</div>'+
   '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">Se borra la lista de jugadores para todo el cuerpo técnico. El historial de partidos no se borra.</div>'+
@@ -1028,7 +1106,7 @@ function askServe(){
     '<button class="chip" style="flex:1;background:var(--bg-danger);color:var(--text-danger);border-color:var(--border-danger)" onclick="setServe(\'them\')">'+esc(oppName())+'</button>'+
     '</div></div></div>';
 }
-function setServe(s){updateDoc(liveRef(),{serving:s}).catch(function(){});closeModal();}
+function setServe(s){if(!guardEdit())return;updateDoc(liveRef(),{serving:s}).catch(function(){});closeModal();}
 
 /* ---------- Match rendering ---------- */
 function rMatch(){
@@ -1114,17 +1192,19 @@ function rPanel(){
     '<button class="btn-sec" style="width:100%;margin-top:6px" onclick="openSub(\''+p.id+'\')"><i class="ti ti-switch-horizontal" aria-hidden="true"></i> Reemplazar</button>';
 }
 function bump(id,k,gb,d){
+  if(!guardEdit())return;
   updateDoc(rosterDoc(id),{['stats.'+k+'.'+gb]:increment(d)}).catch(function(){});
 }
 function savePNote(id,v){updateDoc(rosterDoc(id),{note:v.trim()}).catch(function(){});}
 
 function scoreAction(playerId,key){
+  if(!guardEdit())return;
   updateDoc(rosterDoc(playerId),{['stats.'+key+'.g']:increment(1),'stats.puntos':increment(1)}).catch(function(){});
   recordPoint('us',playerId,'',key);
 }
 
-function pointUs(){askNote();}
-function pointThem(){recordPoint('them',null,'');}
+function pointUs(){if(!guardEdit())return;askNote();}
+function pointThem(){if(!guardEdit())return;recordPoint('them',null,'');}
 function recordPoint(side,playerId,note,actionKey){
   const wasServing=st.serving;
   const rotated=side==='us'&&wasServing==='them';
@@ -1144,6 +1224,7 @@ function recordPoint(side,playerId,note,actionKey){
   }).catch(function(){});
 }
 async function doRotate(){
+  if(!guardEdit())return;
   const starters=st.players.filter(function(p){return p.starter;});
   const batch=writeBatch(db);
   starters.forEach(function(p){
@@ -1192,6 +1273,7 @@ function openSub(id){
     '</div></div>';
 }
 function doSub(inId){
+  if(!guardEdit())return;
   const out=P(subForId),inn=P(inId);
   if(!out||!inn)return;
   const batch=writeBatch(db);
@@ -1203,6 +1285,7 @@ function doSub(inId){
   closeModal();
 }
 function doPositionSwap(outId,otherId){
+  if(!guardEdit())return;
   const out=P(outId),other=P(otherId);
   if(!out||!other)return;
   const batch=writeBatch(db);
@@ -1306,6 +1389,7 @@ function confirmDiscardMatch(){
     '</div></div>';
 }
 async function nextSet(){
+  if(!guardEdit())return;
   const newHistory=st.setHistory.concat([{set:st.set,us:st.score.us,them:st.score.them}]);
   updateDoc(liveRef(),{setHistory:newHistory,set:st.set+1,'score.us':0,'score.them':0}).catch(function(){});
   await clearRallies();
@@ -1313,6 +1397,7 @@ async function nextSet(){
 }
 
 function confirmFinalize(){
+  if(!guardEdit())return;
   document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet" style="max-width:340px"><div class="grab"></div>'+
   '<div style="font-size:15px;font-weight:500;color:var(--text-primary);margin-bottom:6px">Finalizar partido</div>'+
   '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">Se guarda el partido en el historial y se suman las estadísticas al historial de cada jugador. El plantel se mantiene.</div>'+
@@ -1404,6 +1489,7 @@ function openMatchDetail(id){
     '</div></div>';
 }
 function confirmDeleteMatch(id){
+  if(!guardEdit())return;
   const m=st.matches.find(function(x){return x.id===id;});if(!m)return;
   document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet" style="max-width:360px"><div class="grab"></div>'+
     '<div style="font-size:15px;font-weight:500;color:var(--text-primary);margin-bottom:6px">Eliminar "'+esc(m.name)+'"</div>'+
@@ -1518,7 +1604,8 @@ Object.assign(window, {
   editAuthor, editNote, delRally, openMenu, doRotate, nextSet, confirmFinalize, finalizeMatch, openMatchDetail,
   showStats, closeModal, st, handleLogoFile, setTeamDescription,
   setPlayerRole, setPlayerGender, toggleSecondaryRole, confirmDeleteMatch, deleteMatchRecord,
-  openLineupSetup, pickLineupSlot, setLineupSlot, confirmLineup, confirmDiscardMatch
+  openLineupSetup, pickLineupSlot, setLineupSlot, confirmLineup, confirmDiscardMatch,
+  openMembers, setMemberRole
 });
 </script>
 </body>
