@@ -176,7 +176,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Iniciá sesión para acceder al equipo</div>
     <button class="btn-pri" style="max-width:260px;margin:0 auto" onclick="signInGoogle()"><i class="ti ti-brand-google" aria-hidden="true"></i> Iniciar sesión con Google</button>
     <div class="errmsg" id="loginErr" style="display:none;margin-top:10px"></div>
-    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-20.12</div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-20.13</div>
   </div>
 </div>
 
@@ -1037,44 +1037,6 @@ async function doRotate(){
   try{await batch.commit();}catch(e){}
 }
 
-function openFormation(){
-  const tit=st.players.filter(function(p){return p.starter;});
-  const rows=[1,2,3,4,5,6].map(function(pos){
-    const p=tit.find(function(x){return x.position===pos;});
-    if(!p)return '<div class="prow"><span class="ptag">Pos '+pos+'</span><span style="flex:1;color:var(--text-muted);font-size:12px">Vacío</span></div>';
-    return '<div class="prow"><span class="ptag">Pos '+pos+'</span>'+
-      '<div class="pbadge" style="background:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</div>'+
-      '<div style="flex:1;font-size:13px;color:var(--text-primary)">'+esc(p.name)+'</div>'+
-      '<button class="btn-sec" onclick="pickSwap('+pos+')">Cambiar</button></div>';
-  }).join('');
-  document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet"><div class="grab"></div>'+
-    '<div class="sh-head"><div style="flex:1;font-size:15px;font-weight:500;color:var(--text-primary)">Editar formación</div>'+
-    '<button class="ico" style="border:none;width:30px;height:30px" onclick="closeModal()" aria-label="Cerrar"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
-    '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px">Tocá "Cambiar" en una posición para intercambiarla con otro titular. Usalo para armar la rotación real con la que arrancaron.</div>'+
-    '<div class="plist">'+rows+'</div>'+
-    '</div></div>';
-}
-function pickSwap(pos){
-  const tit=st.players.filter(function(p){return p.starter;});
-  const others=tit.filter(function(x){return x.position!==pos;});
-  document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet" style="max-width:360px"><div class="grab"></div>'+
-    '<div class="sh-head"><div style="flex:1;font-size:15px;font-weight:500;color:var(--text-primary)">¿Con quién cambia la posición '+pos+'?</div>'+
-    '<button class="ico" style="border:none;width:30px;height:30px" onclick="openFormation()" aria-label="Volver"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
-    '<div class="chips">'+others.map(function(p){return '<button class="chip" onclick="doSwapPos('+pos+',\''+p.id+'\')"><b style="color:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</b> '+esc(p.name)+' (Pos '+p.position+')</button>';}).join('')+'</div>'+
-    '</div></div>';
-}
-function doSwapPos(pos,otherId){
-  const tit=st.players.filter(function(p){return p.starter;});
-  const current=tit.find(function(x){return x.position===pos;});
-  const other=P(otherId);
-  if(!other)return;
-  const batch=writeBatch(db);
-  batch.update(rosterDoc(other.id),{position:pos});
-  if(current)batch.update(rosterDoc(current.id),{position:other.position});
-  batch.commit().catch(function(){});
-  openFormation();
-}
-
 function askNote(){
   const tit=st.players.filter(function(p){return p.starter;}).sort(function(a,b){return a.position-b.position;});
   document.getElementById('modal').innerHTML=
@@ -1211,12 +1173,19 @@ function openMenu(){
     '<button class="ico" style="border:none;width:30px;height:30px" onclick="closeModal()" aria-label="Cerrar"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
     '<button class="btn-sec" style="width:100%;margin-bottom:8px;text-align:left" onclick="openHist()"><i class="ti ti-history" aria-hidden="true"></i> Historial de puntos</button>'+
     '<button class="btn-sec" style="width:100%;margin-bottom:8px;text-align:left" onclick="doRotate();closeModal()"><i class="ti ti-rotate-clockwise" aria-hidden="true"></i> Rotar manualmente</button>'+
-    '<button class="btn-sec" style="width:100%;margin-bottom:8px;text-align:left" onclick="openFormation()"><i class="ti ti-layout-grid" aria-hidden="true"></i> Editar formación</button>'+
-    '<button class="btn-sec" style="width:100%;margin-bottom:8px;text-align:left" onclick="closeModal();askServe()"><i class="ti ti-ball-volleyball" aria-hidden="true"></i> Cambiar quién saca</button>'+
     '<button class="btn-sec" style="width:100%;margin-bottom:8px;text-align:left" onclick="showStats()"><i class="ti ti-chart-bar" aria-hidden="true"></i> Estadísticas del set</button>'+
     '<button class="btn-sec" style="width:100%;margin-bottom:8px;text-align:left" onclick="nextSet()"><i class="ti ti-player-track-next" aria-hidden="true"></i> Cerrar set y empezar otro</button>'+
     '<button class="btn-sec" style="width:100%;margin-bottom:8px;text-align:left;color:var(--text-accent);border-color:var(--border-accent)" onclick="confirmFinalize()"><i class="ti ti-flag-check" aria-hidden="true"></i> Finalizar partido y guardar historial</button>'+
+    '<button class="btn-sec" style="width:100%;margin-bottom:8px;text-align:left;color:var(--text-danger);border-color:var(--border-danger)" onclick="confirmDiscardMatch()"><i class="ti ti-player-play" aria-hidden="true"></i> Iniciar partido nuevo sin guardar este</button>'+
     '<button class="btn-sec" style="width:100%;text-align:left" onclick="closeModal();showSc(\'home\')"><i class="ti ti-home" aria-hidden="true"></i> Volver al inicio</button>'+
+    '</div></div>';
+}
+function confirmDiscardMatch(){
+  document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet" style="max-width:360px"><div class="grab"></div>'+
+    '<div style="font-size:15px;font-weight:500;color:var(--text-primary);margin-bottom:6px">Iniciar partido nuevo sin guardar este</div>'+
+    '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">Se descarta el marcador y las estadísticas del partido actual: no queda en el historial ni se suma a las estadísticas de carrera. No se puede deshacer.</div>'+
+    '<div style="display:flex;gap:8px"><button class="btn-sec" style="flex:1" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn-sec" style="flex:1;color:var(--text-danger);border-color:var(--border-danger)" onclick="goNewMatch()">Descartar e iniciar</button></div>'+
     '</div></div>';
 }
 async function nextSet(){
@@ -1399,15 +1368,28 @@ if('serviceWorker' in navigator){
   });
 }
 
+let wakeLock=null;
+async function requestWakeLock(){
+  try{
+    if('wakeLock' in navigator){
+      wakeLock=await navigator.wakeLock.request('screen');
+    }
+  }catch(e){}
+}
+requestWakeLock();
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState==='visible')requestWakeLock();
+});
+
 Object.assign(window, {
   signInGoogle, signOutGoogle, openAccountMenu, copyTeamCode, leaveTeam, createTeam, joinTeam, setTeamName,
   showSc, goNewMatch, addP, rmP, openProfile, openEditAttrs, setAttr, handlePhotoFile, removePhoto,
   confirmClearRoster, clearRoster, cancelNewMatch, finishNewMatchSetup, askServe, setServe, selectP, bump,
   savePNote, scoreAction, pointUs, pointThem, pickAuthor, confirmPoint, openSub, doSub, doPositionSwap, openHist, openRally,
   editAuthor, editNote, delRally, openMenu, doRotate, nextSet, confirmFinalize, finalizeMatch, openMatchDetail,
-  showStats, closeModal, st, handleLogoFile, openFormation, pickSwap, doSwapPos, setTeamDescription,
+  showStats, closeModal, st, handleLogoFile, setTeamDescription,
   setPlayerRole, toggleSecondaryRole, confirmDeleteMatch, deleteMatchRecord,
-  openLineupSetup, pickLineupSlot, setLineupSlot, confirmLineup
+  openLineupSetup, pickLineupSlot, setLineupSlot, confirmLineup, confirmDiscardMatch
 });
 </script>
 </body>
