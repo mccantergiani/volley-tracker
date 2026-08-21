@@ -176,7 +176,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Iniciá sesión para acceder al equipo</div>
     <button class="btn-pri" style="max-width:260px;margin:0 auto" onclick="signInGoogle()"><i class="ti ti-brand-google" aria-hidden="true"></i> Iniciar sesión con Google</button>
     <div class="errmsg" id="loginErr" style="display:none;margin-top:10px"></div>
-    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-20.13</div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-21.1</div>
   </div>
 </div>
 
@@ -215,6 +215,10 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
   </div>
   <div id="homeList" style="margin-top:14px"></div>
   <div class="errmsg" id="homeMsg" style="display:none;text-align:center"></div>
+  <div id="homeCarouselWrap" style="display:none">
+    <div style="font-size:11px;color:var(--text-muted);text-align:center;margin:20px 0 8px">Plantel</div>
+    <div id="homeCarousel" style="display:flex;gap:10px;overflow-x:auto;padding:4px 4px 14px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch"></div>
+  </div>
 </div>
 
 <div class="scr" id="s-equipo">
@@ -249,9 +253,25 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
     </div>
     <div class="fg"><label class="fl">&nbsp;</label><button class="ico" onclick="addP()" aria-label="Agregar"><i class="ti ti-plus" aria-hidden="true"></i></button></div>
   </div>
+  <div class="fg" style="max-width:180px;margin-top:6px">
+    <label class="fl">Género</label>
+    <select id="pGn"><option value="M">Masculino</option><option value="F">Femenino</option><option value="X">Otro</option></select>
+  </div>
   <div style="font-size:11px;color:var(--text-muted);margin-top:2px">La titularidad y posición se eligen al empezar cada partido, no acá.</div>
   <div class="errmsg" id="serr" style="display:none"></div>
-  <div class="sec-t" id="rosterTitle">Plantel</div>
+  <div class="sec-t">Plantel</div>
+  <div style="display:flex;gap:8px;margin-bottom:8px">
+    <select id="fltGender" onchange="rSetup()" style="flex:1">
+      <option value="">Todos los géneros</option>
+      <option value="M">Masculino</option><option value="F">Femenino</option><option value="X">Otro</option>
+    </select>
+    <select id="fltRole" onchange="rSetup()" style="flex:1">
+      <option value="">Todos los puestos</option>
+      <option value="setter">Armador</option><option value="opuesto">Opuesto</option>
+      <option value="punta">Punta</option><option value="central">Central</option><option value="libero">Líbero</option>
+    </select>
+  </div>
+  <div id="rosterTitle" style="font-size:11px;color:var(--text-muted);margin-bottom:4px"></div>
   <div id="rosterSec"></div>
   <div style="margin-top:10px">
     <button class="btn-sec" style="color:var(--text-danger);border-color:var(--border-danger)" onclick="confirmClearRoster()"><i class="ti ti-trash" aria-hidden="true"></i> Borrar plantel del equipo</button>
@@ -308,7 +328,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection,
-  onSnapshot, query, orderBy, serverTimestamp, increment, writeBatch
+  onSnapshot, query, orderBy, serverTimestamp, increment, writeBatch, arrayUnion
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -326,12 +346,13 @@ const db = getFirestore(fbApp);
 
 const RC={setter:'#5B4FBE',opuesto:'#A02060',punta:'#1E7E5A',central:'#1A6FA8',libero:'#D4520E'};
 const RN={setter:'Armador',opuesto:'Opuesto',punta:'Punta',central:'Central',libero:'Líbero'};
+const GN={M:'Masculino',F:'Femenino',X:'Otro'};
 const GP=[4,3,2,5,6,1];
 const METRICS=[['bloque','Bloque',true],['recep','Recepción',false],['ataque','Ataque',true],['saque','Saque',true]];
 const MLBL={bloque:'Bloque',recep:'Recepción',ataque:'Ataque',saque:'Saque'};
 
 let st={teamName:'',teamLogo:null,teamDescription:'',players:[],score:{us:0,them:0},set:1,serving:'us',rallies:[],career:{},matches:[],
-  setHistory:[],opponent:'',matchName:'',matchPlace:'',matchDate:'',active:false};
+  setHistory:[],opponent:'',matchName:'',matchPlace:'',matchDate:'',active:false,participants:[]};
 let lineupDraft={}, pendingMatchDate='';
 let selId=null, subForId=null;
 let currentUser=null, teamId=null, unsubs=[];
@@ -521,7 +542,7 @@ function startTeamListeners(){
     st.players=qs.docs.map(function(d){
       const data=d.data();
       return {
-        id:d.id, rid:d.id, name:data.name, number:data.number, role:data.role,
+        id:d.id, rid:d.id, name:data.name, number:data.number, role:data.role, gender:data.gender||'M',
         starter:!!data.starter, position:data.position||null, secondaryRoles:data.secondaryRoles||[],
         attrs:Object.assign({ataque:50,recep:50,saque:50,salto:50,ritmo:50,mental:50}, data.attrs||{}),
         photo:data.photo||null, note:data.note||'',
@@ -542,6 +563,7 @@ function startTeamListeners(){
     st.matchDate=d.matchDate||'';
     st.setHistory=d.setHistory||[];
     st.active=!!d.active;
+    st.participants=d.participants||[];
     rerenderCurrentScreen();
   }));
   unsubs.push(onSnapshot(query(ralliesCol(), orderBy('ts','asc')), function(qs){
@@ -593,6 +615,18 @@ function rHome(){
     '<div class="mcard" onclick="showSc(\'history\')"><div class="micon" style="background:var(--bg-success);color:var(--text-success)"><i class="ti ti-history" aria-hidden="true"></i></div>'+
     '<div class="mtxt"><div class="mtitle">Historial de partidos</div><div class="msub">'+nm+' partido'+(nm===1?'':'s')+' jugado'+(nm===1?'':'s')+'</div></div>'+
     '<i class="ti ti-chevron-right mchev" aria-hidden="true"></i></div>';
+  renderHomeCarousel();
+}
+function renderHomeCarousel(){
+  const wrap=document.getElementById('homeCarouselWrap'),el=document.getElementById('homeCarousel');
+  if(!wrap||!el)return;
+  if(!st.players.length){wrap.style.display='none';return;}
+  wrap.style.display='block';
+  el.innerHTML=st.players.map(function(p){
+    return '<div style="flex-shrink:0;width:172px;height:212px;overflow:hidden;scroll-snap-align:center">'+
+      '<div style="transform:scale(0.75);transform-origin:top left;width:230px;pointer-events:none">'+renderCard(p)+'</div>'+
+      '</div>';
+  }).join('');
 }
 async function goNewMatch(){
   if(st.players.length===0){
@@ -607,7 +641,7 @@ async function goNewMatch(){
   pendingMatchDate=todayStr();
   updateDoc(liveRef(),{
     active:true,opponent:'',matchName:'',matchPlace:'',matchDate:pendingMatchDate,
-    'score.us':0,'score.them':0,set:1,setHistory:[]
+    'score.us':0,'score.them':0,set:1,setHistory:[],participants:[]
   }).catch(function(){});
   openLineupSetup();
 }
@@ -656,6 +690,8 @@ async function confirmLineup(){
     batch.update(rosterDoc(p.id),{starter:!!pos,position:pos});
   });
   try{await batch.commit();}catch(e){}
+  const assignedRids=Object.keys(lineupDraft).map(function(k){return lineupDraft[k];});
+  updateDoc(liveRef(),{participants:assignedRids}).catch(function(){});
   askServeAndOpponent(pendingMatchDate);
 }
 async function clearRallies(){
@@ -673,13 +709,14 @@ function addP(){
   const nm=document.getElementById('pNm').value.trim();
   const no=document.getElementById('pNo').value.trim();
   const rl=document.getElementById('pRl').value;
+  const gn=document.getElementById('pGn').value;
   const er=document.getElementById('serr');
   if(!nm){showE(er,'Ingresa el nombre.');return;}
   if(!no){showE(er,'Ingresa el número.');return;}
   if(st.players.find(function(p){return p.number===no;})){showE(er,'El número '+no+' ya está en uso.');return;}
   hideE(er);
   addDoc(rosterCol(),{
-    name:nm,number:no,role:rl,starter:false,position:null,secondaryRoles:[],
+    name:nm,number:no,role:rl,gender:gn,starter:false,position:null,secondaryRoles:[],
     attrs:{ataque:50,recep:50,saque:50,salto:50,ritmo:50,mental:50},photo:null,note:'',stats:newStat()
   }).catch(function(){showE(er,'No se pudo agregar. Probá de nuevo.');});
   document.getElementById('pNm').value='';document.getElementById('pNo').value='';document.getElementById('pNm').focus();
@@ -687,9 +724,38 @@ function addP(){
 function rmP(id){deleteDoc(rosterDoc(id)).catch(function(){});}
 function rSetup(){
   renderTeamLogoPreview();
-  const all=st.players.slice().sort(function(a,b){return a.name.localeCompare(b.name);});
-  document.getElementById('rosterTitle').textContent='Plantel ('+all.length+')';
-  document.getElementById('rosterSec').innerHTML=all.length?'<div class="plist">'+all.map(rowHtml).join('')+'</div>':'<p style="font-size:12px;color:var(--text-muted)">Aún no hay jugadores.</p>';
+  const fg=document.getElementById('fltGender'),fr=document.getElementById('fltRole');
+  const gVal=fg?fg.value:'',rVal=fr?fr.value:'';
+  const filtered=st.players.filter(function(p){
+    if(gVal&&(p.gender||'M')!==gVal)return false;
+    if(rVal&&p.role!==rVal)return false;
+    return true;
+  });
+  document.getElementById('rosterTitle').textContent='Mostrando '+filtered.length+' de '+st.players.length+' jugadores';
+  if(!filtered.length){
+    document.getElementById('rosterSec').innerHTML=st.players.length?'<p style="font-size:12px;color:var(--text-muted)">Ningún jugador coincide con esos filtros.</p>':'<p style="font-size:12px;color:var(--text-muted)">Aún no hay jugadores.</p>';
+    return;
+  }
+  const genders=['M','F','X'];
+  let html='';
+  genders.forEach(function(g){
+    const inGender=filtered.filter(function(p){return (p.gender||'M')===g;});
+    if(!inGender.length)return;
+    html+='<div class="sec-t" style="margin-top:14px">'+GN[g]+' ('+inGender.length+')</div>';
+    const roleKeys=Object.keys(RN);
+    roleKeys.forEach(function(r){
+      const inRole=inGender.filter(function(p){return p.role===r;}).sort(function(a,b){return a.name.localeCompare(b.name);});
+      if(!inRole.length)return;
+      html+='<div style="font-size:11px;color:var(--text-muted);margin:6px 0 3px 2px">'+RN[r]+'</div>';
+      html+='<div class="plist">'+inRole.map(rowHtml).join('')+'</div>';
+    });
+    const other=inGender.filter(function(p){return !RN[p.role];}).sort(function(a,b){return a.name.localeCompare(b.name);});
+    if(other.length){
+      html+='<div style="font-size:11px;color:var(--text-muted);margin:6px 0 3px 2px">Sin rol asignado</div>';
+      html+='<div class="plist">'+other.map(rowHtml).join('')+'</div>';
+    }
+  });
+  document.getElementById('rosterSec').innerHTML=html;
 }
 function rowHtml(p){
   return '<div class="prow">'+
@@ -776,6 +842,8 @@ function openProfileInner(id){
     (p.photo?'<button class="btn-sec" style="color:var(--text-danger);border-color:var(--border-danger)" onclick="removePhoto(\''+p.id+'\')" aria-label="Quitar foto"><i class="ti ti-trash" aria-hidden="true"></i></button>':'')+
     '</div>'+
     '<div class="sec-t">Rol y posiciones</div>'+
+    '<div class="fg" style="margin-bottom:8px;max-width:180px"><label class="fl">Género</label>'+
+    '<select onchange="setPlayerGender(\''+p.id+'\',this.value)">'+Object.keys(GN).map(function(g){return '<option value="'+g+'"'+(g===(p.gender||'M')?' selected':'')+'>'+GN[g]+'</option>';}).join('')+'</select></div>'+
     '<div class="fg" style="margin-bottom:8px"><label class="fl">Rol principal (el que se usa en el partido)</label>'+
     '<select onchange="setPlayerRole(\''+p.id+'\',this.value)">'+Object.keys(RN).map(function(r){return '<option value="'+r+'"'+(r===p.role?' selected':'')+'>'+RN[r]+'</option>';}).join('')+'</select></div>'+
     '<div class="fl" style="margin-bottom:6px">También puede jugar de (opcional)</div>'+
@@ -793,6 +861,12 @@ function setPlayerRole(id,role){
   const filteredSecondary=(p.secondaryRoles||[]).filter(function(r){return r!==role;});
   updateDoc(rosterDoc(id),{role:role,secondaryRoles:filteredSecondary}).catch(function(){});
   p.role=role;p.secondaryRoles=filteredSecondary;
+  openProfile(id);
+}
+function setPlayerGender(id,gender){
+  const p=P(id);if(!p)return;
+  updateDoc(rosterDoc(id),{gender:gender}).catch(function(){});
+  p.gender=gender;
   openProfile(id);
 }
 function toggleSecondaryRole(id,role){
@@ -1082,6 +1156,7 @@ function doSub(inId){
   batch.update(rosterDoc(inn.id),{starter:true,position:out.position});
   batch.update(rosterDoc(out.id),{starter:false,position:null});
   batch.commit().catch(function(){});
+  updateDoc(liveRef(),{participants:arrayUnion(inn.id)}).catch(function(){});
   selId=inn.id;
   closeModal();
 }
@@ -1206,7 +1281,8 @@ async function finalizeMatch(){
   const finalSetHistory=st.setHistory.concat([{set:st.set,us:st.score.us,them:st.score.them}]);
   const setsWonUs=finalSetHistory.filter(function(x){return x.us>x.them;}).length;
   const setsWonThem=finalSetHistory.filter(function(x){return x.them>x.us;}).length;
-  const playersSnap=st.players.filter(function(p){return p.rid;}).map(function(p){
+  const participantRids=st.participants||[];
+  const playersSnap=st.players.filter(function(p){return p.rid&&participantRids.indexOf(p.rid)>=0;}).map(function(p){
     const s=iSt(p);
     return {rid:p.rid,name:p.name,number:p.number,role:p.role,puntos:s.puntos,
       ataque:{g:s.ataque.g,b:s.ataque.b},bloque:{g:s.bloque.g,b:s.bloque.b},
@@ -1238,7 +1314,7 @@ async function finalizeMatch(){
   await clearRallies();
   updateDoc(liveRef(),{
     active:false, opponent:'', matchName:'', matchPlace:'', matchDate:'',
-    'score.us':0,'score.them':0, set:1, setHistory:[]
+    'score.us':0,'score.them':0, set:1, setHistory:[], participants:[]
   }).catch(function(){});
   closeModal();showSc('home');
 }
@@ -1315,8 +1391,10 @@ async function deleteMatchRecord(id){
 }
 
 function showStats(){
-  const tit=st.players.filter(function(p){return p.starter;}).sort(function(a,b){return a.position-b.position;});
-  const ben=st.players.filter(function(p){return !p.starter;});const all=tit.concat(ben);
+  const partIds=st.participants||[];
+  const played=st.players.filter(function(p){return partIds.indexOf(p.id)>=0;});
+  const tit=played.filter(function(p){return p.starter;}).sort(function(a,b){return a.position-b.position;});
+  const ben=played.filter(function(p){return !p.starter;}).sort(function(a,b){return a.name.localeCompare(b.name);});const all=tit.concat(ben);
   const cellv=function(s,k){return '<span style="color:var(--text-success)">'+s[k].g+'</span>/<span style="color:var(--text-danger)">'+s[k].b+'</span>';};
   const row=function(p){const s=iSt(p);
     return '<tr><td style="padding:6px 4px"><span class="pbadge" style="width:22px;height:22px;font-size:10px;display:inline-flex;background:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</span></td>'+
@@ -1333,6 +1411,7 @@ function showStats(){
     '<table style="width:100%;border-collapse:collapse"><thead><tr style="border-bottom:0.5px solid var(--border-strong)">'+
     '<th></th>'+th('Jugador')+th('Pts')+th('Ataque')+th('Bloque')+th('Recep')+th('Saque')+'</tr></thead>'+
     '<tbody>'+all.map(row).join('')+'</tbody></table>'+
+    (all.length?'':'<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:8px">Todavía nadie registró estadísticas en este partido.</p>')+
     '<p style="font-size:11px;color:var(--text-muted);margin-top:8px"><span style="color:var(--text-success)">verde</span> = bien · <span style="color:var(--text-danger)">rojo</span> = mal · <span style="color:var(--text-accent)">Pts</span> = anotados con trofeo</p>'+
     '</div></div>';
 }
@@ -1383,12 +1462,12 @@ document.addEventListener('visibilitychange', function(){
 
 Object.assign(window, {
   signInGoogle, signOutGoogle, openAccountMenu, copyTeamCode, leaveTeam, createTeam, joinTeam, setTeamName,
-  showSc, goNewMatch, addP, rmP, openProfile, openEditAttrs, setAttr, handlePhotoFile, removePhoto,
+  showSc, rSetup, goNewMatch, addP, rmP, openProfile, openEditAttrs, setAttr, handlePhotoFile, removePhoto,
   confirmClearRoster, clearRoster, cancelNewMatch, finishNewMatchSetup, askServe, setServe, selectP, bump,
   savePNote, scoreAction, pointUs, pointThem, pickAuthor, confirmPoint, openSub, doSub, doPositionSwap, openHist, openRally,
   editAuthor, editNote, delRally, openMenu, doRotate, nextSet, confirmFinalize, finalizeMatch, openMatchDetail,
   showStats, closeModal, st, handleLogoFile, setTeamDescription,
-  setPlayerRole, toggleSecondaryRole, confirmDeleteMatch, deleteMatchRecord,
+  setPlayerRole, setPlayerGender, toggleSecondaryRole, confirmDeleteMatch, deleteMatchRecord,
   openLineupSetup, pickLineupSlot, setLineupSlot, confirmLineup, confirmDiscardMatch
 });
 </script>
