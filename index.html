@@ -176,7 +176,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Iniciá sesión para acceder al equipo</div>
     <button class="btn-pri" style="max-width:260px;margin:0 auto" onclick="signInGoogle()"><i class="ti ti-brand-google" aria-hidden="true"></i> Iniciar sesión con Google</button>
     <div class="errmsg" id="loginErr" style="display:none;margin-top:10px"></div>
-    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-21.7</div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-21.8</div>
   </div>
 </div>
 
@@ -713,7 +713,7 @@ function renderHomeCarousel(){
   if(!sameSet)homeCarouselOrder=shuffled(currentIds);
   const ordered=homeCarouselOrder.map(function(id){return P(id);}).filter(Boolean);
   el.innerHTML=ordered.map(function(p){
-    return '<div style="flex-shrink:0;width:172px;height:212px;overflow:hidden;cursor:pointer" onclick="openProfile(\''+p.id+'\')">'+
+    return '<div style="flex-shrink:0;width:172px;height:212px;overflow:hidden;cursor:pointer" onclick="openPlayerHistory(\''+p.id+'\')">'+
       '<div style="transform:scale(0.75);transform-origin:top left;width:230px;pointer-events:none">'+renderCard(p)+'</div>'+
       '</div>';
   }).join('');
@@ -930,35 +930,6 @@ function openProfile(id){
 }
 function openProfileInner(id){
   const p=P(id);if(!p)return;
-  const rawCareer=p.rid?st.career[p.rid]:null;
-  const nn=function(v){return Math.max(0,v||0);};
-  const nnPair=function(o){o=o||{};return {g:nn(o.g),b:nn(o.b)};};
-  const career=rawCareer?{
-    matches:nn(rawCareer.matches), puntos:nn(rawCareer.puntos),
-    ataque:nnPair(rawCareer.ataque), bloque:nnPair(rawCareer.bloque),
-    recep:nnPair(rawCareer.recep), saque:nnPair(rawCareer.saque)
-  }:null;
-  const matches=st.matches.filter(function(m){return (m.players||[]).some(function(mp){return mp.rid===p.rid;});});
-  const pct=function(g,b){const t=(g||0)+(b||0);return t?Math.round((g/t)*100)+'%':'—';};
-  const statCard=function(lbl,val){return '<div style="background:var(--surface-1);border-radius:8px;padding:8px 10px"><div style="font-size:11px;color:var(--text-secondary)">'+lbl+'</div><div style="font-size:16px;font-weight:500;color:var(--text-primary)">'+val+'</div></div>';};
-  const statCardR=function(lbl,obj){return statCard(lbl,obj.g+'/'+obj.b+' · '+pct(obj.g,obj.b));};
-  const careerHtml=(career&&career.matches)?
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">'+
-    statCard('Partidos',career.matches)+statCard('Puntos totales',career.puntos)+
-    statCardR('Ataque B/M · %',career.ataque)+statCardR('Bloqueo B/M · %',career.bloque)+
-    statCardR('Recepción B/M · %',career.recep)+statCardR('Saque B/M · %',career.saque)+
-    '</div>':'<p style="font-size:12px;color:var(--text-muted);margin-top:10px">Todavía no tiene partidos finalizados.</p>';
-  const matchRatio=function(lbl,obj){return '<span style="margin-right:10px">'+lbl+' <b style="color:var(--text-primary)">'+pct(obj.g,obj.b)+'</b></span>';};
-  const matchesHtml=matches.length?matches.slice(0,8).map(function(m){
-    const mp=m.players.find(function(x){return x.rid===p.rid;});
-    if(!mp)return '';
-    return '<div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:7px;padding:8px;margin-bottom:6px;cursor:pointer" onclick="closeModal();openMatchDetail(\''+m.id+'\')">'+
-      '<div style="display:flex;align-items:center;gap:8px"><span class="rdot" style="background:var(--text-accent)"></span>'+
-      '<div class="rtxt" style="flex:1">'+esc(m.name)+' · vs '+esc(m.opponent)+'</div><span class="rsc">'+mp.puntos+' pts</span></div>'+
-      '<div style="display:flex;flex-wrap:wrap;margin-top:5px;padding-left:14px;font-size:10px;color:var(--text-secondary)">'+
-      matchRatio('ATA',mp.ataque)+matchRatio('BLQ',mp.bloque)+matchRatio('REC',mp.recep)+matchRatio('SAQ',mp.saque)+
-      '</div></div>';
-  }).join(''):'<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:8px">Sin partidos registrados.</p>';
   document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet" style="max-width:400px"><div class="grab"></div>'+
     '<div class="sh-head"><div style="flex:1;font-size:15px;font-weight:500;color:var(--text-primary)">Perfil del jugador</div>'+
     '<button class="ico" style="border:none;width:30px;height:30px" onclick="closeModal()" aria-label="Cerrar"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
@@ -981,8 +952,40 @@ function openProfileInner(id){
       return '<button class="chip" style="'+(active?'background:var(--bg-accent);border-color:var(--border-accent)':'')+'" onclick="toggleSecondaryRole(\''+p.id+'\',\''+r+'\')">'+RN[r]+'</button>';
     }).join('')+'</div>'+
     '<button class="btn-sec" style="width:100%;margin-top:6px" onclick="openEditAttrs(\''+p.id+'\')"><i class="ti ti-adjustments" aria-hidden="true"></i> Editar cualidades</button>'+
-    '<div class="sec-t">Historial de carrera</div>'+careerHtml+
-    '<div class="sec-t">Partidos jugados</div>'+matchesHtml+
+    '</div></div>';
+}
+function openPlayerHistory(id){
+  try{
+    openPlayerHistoryInner(id);
+  }catch(err){
+    document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet"><div class="grab"></div>'+
+      '<div class="sh-head"><div style="flex:1;font-size:15px;font-weight:500;color:var(--text-danger)">Error al abrir el historial</div>'+
+      '<button class="ico" style="border:none;width:30px;height:30px" onclick="closeModal()" aria-label="Cerrar"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
+      '<div style="font-size:12px;color:var(--text-primary)">'+esc(err&&err.message?err.message:String(err))+'</div>'+
+      '</div></div>';
+  }
+}
+function openPlayerHistoryInner(id){
+  const p=P(id);if(!p)return;
+  const matches=st.matches.filter(function(m){return (m.players||[]).some(function(mp){return mp.rid===p.rid;});});
+  const pct=function(g,b){const t=(g||0)+(b||0);return t?Math.round((g/t)*100)+'%':'—';};
+  const matchRatio=function(lbl,obj){return '<span style="margin-right:10px">'+lbl+' <b style="color:var(--text-primary)">'+pct(obj.g,obj.b)+'</b></span>';};
+  const matchesHtml=matches.length?matches.map(function(m){
+    const mp=m.players.find(function(x){return x.rid===p.rid;});
+    if(!mp)return '';
+    return '<div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:7px;padding:8px;margin-bottom:6px;cursor:pointer" onclick="closeModal();openMatchDetail(\''+m.id+'\')">'+
+      '<div style="display:flex;align-items:center;gap:8px"><span class="rdot" style="background:var(--text-accent)"></span>'+
+      '<div class="rtxt" style="flex:1">'+esc(m.name)+' · vs '+esc(m.opponent)+'</div><span class="rsc">'+mp.puntos+' pts</span></div>'+
+      '<div style="font-size:10px;color:var(--text-muted);margin-top:3px;padding-left:14px">'+fmtDate(m.date)+' · Jugó de '+(RN[mp.role]||'Jugador')+'</div>'+
+      '<div style="display:flex;flex-wrap:wrap;margin-top:5px;padding-left:14px;font-size:10px;color:var(--text-secondary)">'+
+      matchRatio('ATA',mp.ataque)+matchRatio('BLQ',mp.bloque)+matchRatio('REC',mp.recep)+matchRatio('SAQ',mp.saque)+
+      '</div></div>';
+  }).join(''):'<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:20px 8px">Sin partidos registrados.</p>';
+  document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet" style="max-width:400px"><div class="grab"></div>'+
+    '<div class="sh-head"><div style="flex:1;font-size:15px;font-weight:500;color:var(--text-primary)">'+esc(p.name)+'</div>'+
+    '<button class="ico" style="border:none;width:30px;height:30px" onclick="closeModal()" aria-label="Cerrar"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
+    renderCard(p)+
+    '<div class="sec-t">Historial de partidos</div>'+matchesHtml+
     '</div></div>';
 }
 function setPlayerRole(id,role){
@@ -1619,7 +1622,7 @@ document.addEventListener('visibilitychange', function(){
 
 Object.assign(window, {
   signInGoogle, signOutGoogle, openAccountMenu, copyTeamCode, leaveTeam, createTeam, joinTeam, setTeamName,
-  showSc, rSetup, goNewMatch, addP, rmP, openProfile, openEditAttrs, setAttr, handlePhotoFile, removePhoto,
+  showSc, rSetup, goNewMatch, addP, rmP, openProfile, openPlayerHistory, openEditAttrs, setAttr, handlePhotoFile, removePhoto,
   confirmClearRoster, clearRoster, cancelNewMatch, finishNewMatchSetup, askServe, setServe, selectP, bump,
   savePNote, scoreAction, pointUs, pointThem, pickAuthor, confirmPoint, openSub, doSub, doPositionSwap, openHist, openRally,
   editAuthor, editNote, delRally, openMenu, doRotate, nextSet, confirmFinalize, finalizeMatch, openMatchDetail,
