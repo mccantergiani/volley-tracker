@@ -176,7 +176,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Iniciá sesión para acceder al equipo</div>
     <button class="btn-pri" style="max-width:260px;margin:0 auto" onclick="signInGoogle()"><i class="ti ti-brand-google" aria-hidden="true"></i> Iniciar sesión con Google</button>
     <div class="errmsg" id="loginErr" style="display:none;margin-top:10px"></div>
-    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-21.1</div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-21.2</div>
   </div>
 </div>
 
@@ -217,7 +217,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
   <div class="errmsg" id="homeMsg" style="display:none;text-align:center"></div>
   <div id="homeCarouselWrap" style="display:none">
     <div style="font-size:11px;color:var(--text-muted);text-align:center;margin:20px 0 8px">Plantel</div>
-    <div id="homeCarousel" style="display:flex;gap:10px;overflow-x:auto;padding:4px 4px 14px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch"></div>
+    <div id="homeCarousel" style="display:flex;gap:10px;overflow-x:auto;padding:4px 4px 14px;-webkit-overflow-scrolling:touch"></div>
   </div>
 </div>
 
@@ -328,7 +328,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection,
-  onSnapshot, query, orderBy, serverTimestamp, increment, writeBatch, arrayUnion
+  onSnapshot, query, orderBy, serverTimestamp, increment, writeBatch, arrayUnion, runTransaction
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -363,6 +363,7 @@ function iSt(p){if(!p.stats)p.stats=newStat();return p.stats;}
 function showSc(n){
   document.querySelectorAll('.scr').forEach(s=>s.classList.remove('on'));
   document.getElementById('s-'+n).classList.add('on');
+  if(n!=='home')stopCarouselAutoScroll();
   if(n==='home')rHome();
   else if(n==='equipo')rSetup();
   else if(n==='history')rHistory();
@@ -617,16 +618,55 @@ function rHome(){
     '<i class="ti ti-chevron-right mchev" aria-hidden="true"></i></div>';
   renderHomeCarousel();
 }
+let homeCarouselOrder=null;
+let carouselTimer=null;
+function shuffled(arr){
+  const a=arr.slice();
+  for(let i=a.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    const tmp=a[i];a[i]=a[j];a[j]=tmp;
+  }
+  return a;
+}
 function renderHomeCarousel(){
   const wrap=document.getElementById('homeCarouselWrap'),el=document.getElementById('homeCarousel');
   if(!wrap||!el)return;
-  if(!st.players.length){wrap.style.display='none';return;}
+  if(!st.players.length){wrap.style.display='none';stopCarouselAutoScroll();return;}
   wrap.style.display='block';
-  el.innerHTML=st.players.map(function(p){
-    return '<div style="flex-shrink:0;width:172px;height:212px;overflow:hidden;scroll-snap-align:center">'+
+  const currentIds=st.players.map(function(p){return p.id;});
+  const sameSet=homeCarouselOrder&&homeCarouselOrder.length===currentIds.length&&homeCarouselOrder.every(function(id){return currentIds.indexOf(id)>=0;});
+  if(!sameSet)homeCarouselOrder=shuffled(currentIds);
+  const ordered=homeCarouselOrder.map(function(id){return P(id);}).filter(Boolean);
+  el.innerHTML=ordered.map(function(p){
+    return '<div style="flex-shrink:0;width:172px;height:212px;overflow:hidden">'+
       '<div style="transform:scale(0.75);transform-origin:top left;width:230px;pointer-events:none">'+renderCard(p)+'</div>'+
       '</div>';
   }).join('');
+  startCarouselAutoScroll();
+}
+function startCarouselAutoScroll(){
+  stopCarouselAutoScroll();
+  const el=document.getElementById('homeCarousel');
+  if(!el||el.scrollWidth<=el.clientWidth+4)return;
+  let paused=false;
+  const pause=function(){
+    paused=true;
+    clearTimeout(el._resumeT);
+    el._resumeT=setTimeout(function(){paused=false;},3000);
+  };
+  el.addEventListener('touchstart',pause,{passive:true});
+  el.addEventListener('pointerdown',pause);
+  carouselTimer=setInterval(function(){
+    if(paused||!document.body.contains(el))return;
+    if(el.scrollLeft+el.clientWidth>=el.scrollWidth-1){
+      el.scrollLeft=0;
+    }else{
+      el.scrollLeft+=1;
+    }
+  },60);
+}
+function stopCarouselAutoScroll(){
+  if(carouselTimer){clearInterval(carouselTimer);carouselTimer=null;}
 }
 async function goNewMatch(){
   if(st.players.length===0){
@@ -814,10 +854,12 @@ function openProfile(id){
 function openProfileInner(id){
   const p=P(id);if(!p)return;
   const rawCareer=p.rid?st.career[p.rid]:null;
+  const nn=function(v){return Math.max(0,v||0);};
+  const nnPair=function(o){o=o||{};return {g:nn(o.g),b:nn(o.b)};};
   const career=rawCareer?{
-    matches:rawCareer.matches||0, puntos:rawCareer.puntos||0,
-    ataque:Object.assign({g:0,b:0},rawCareer.ataque), bloque:Object.assign({g:0,b:0},rawCareer.bloque),
-    recep:Object.assign({g:0,b:0},rawCareer.recep), saque:Object.assign({g:0,b:0},rawCareer.saque)
+    matches:nn(rawCareer.matches), puntos:nn(rawCareer.puntos),
+    ataque:nnPair(rawCareer.ataque), bloque:nnPair(rawCareer.bloque),
+    recep:nnPair(rawCareer.recep), saque:nnPair(rawCareer.saque)
   }:null;
   const matches=st.matches.filter(function(m){return (m.players||[]).some(function(mp){return mp.rid===p.rid;});});
   const statCard=function(lbl,val){return '<div style="background:var(--surface-1);border-radius:8px;padding:8px 10px"><div style="font-size:11px;color:var(--text-secondary)">'+lbl+'</div><div style="font-size:16px;font-weight:500;color:var(--text-primary)">'+val+'</div></div>';};
@@ -1370,21 +1412,29 @@ function confirmDeleteMatch(id){
     '<button class="btn-sec" style="flex:1;color:var(--text-danger);border-color:var(--border-danger)" onclick="deleteMatchRecord(\''+id+'\')">Eliminar</button></div>'+
     '</div></div>';
 }
+function clampSub(cur,delta){return Math.max(0,(cur||0)-delta);}
 async function deleteMatchRecord(id){
   const m=st.matches.find(function(x){return x.id===id;});if(!m)return;
   const players=m.players||[];
   for(let i=0;i<players.length;i++){
     const p=players[i];
     if(!p.rid)continue;
-    const upd={
-      matches:increment(-1),
-      puntos:increment(-(p.puntos||0)),
-      'ataque.g':increment(-((p.ataque&&p.ataque.g)||0)),'ataque.b':increment(-((p.ataque&&p.ataque.b)||0)),
-      'bloque.g':increment(-((p.bloque&&p.bloque.g)||0)),'bloque.b':increment(-((p.bloque&&p.bloque.b)||0)),
-      'recep.g':increment(-((p.recep&&p.recep.g)||0)),'recep.b':increment(-((p.recep&&p.recep.b)||0)),
-      'saque.g':increment(-((p.saque&&p.saque.g)||0)),'saque.b':increment(-((p.saque&&p.saque.b)||0))
-    };
-    try{await updateDoc(careerDocRef(p.rid),upd);}catch(e){}
+    try{
+      await runTransaction(db, async function(tx){
+        const ref=careerDocRef(p.rid);
+        const snap=await tx.get(ref);
+        const c=snap.exists()?snap.data():{};
+        const at=c.ataque||{},bl=c.bloque||{},re=c.recep||{},sa=c.saque||{};
+        tx.set(ref,{
+          matches:clampSub(c.matches,1),
+          puntos:clampSub(c.puntos,p.puntos||0),
+          ataque:{g:clampSub(at.g,(p.ataque&&p.ataque.g)||0),b:clampSub(at.b,(p.ataque&&p.ataque.b)||0)},
+          bloque:{g:clampSub(bl.g,(p.bloque&&p.bloque.g)||0),b:clampSub(bl.b,(p.bloque&&p.bloque.b)||0)},
+          recep:{g:clampSub(re.g,(p.recep&&p.recep.g)||0),b:clampSub(re.b,(p.recep&&p.recep.b)||0)},
+          saque:{g:clampSub(sa.g,(p.saque&&p.saque.g)||0),b:clampSub(sa.b,(p.saque&&p.saque.b)||0)}
+        },{merge:true});
+      });
+    }catch(e){}
   }
   try{await deleteDoc(doc(db,'teams',teamId,'matches',id));}catch(e){}
   closeModal();
