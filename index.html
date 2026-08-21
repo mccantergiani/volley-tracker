@@ -176,7 +176,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Iniciá sesión para acceder al equipo</div>
     <button class="btn-pri" style="max-width:260px;margin:0 auto" onclick="signInGoogle()"><i class="ti ti-brand-google" aria-hidden="true"></i> Iniciar sesión con Google</button>
     <div class="errmsg" id="loginErr" style="display:none;margin-top:10px"></div>
-    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-21.3</div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-21.4</div>
   </div>
 </div>
 
@@ -907,7 +907,7 @@ function renderCard(p){
     '<div class="fcard-col"><div class="fcard-stat"><span class="v">'+c.ataque+'</span><span class="k">ATA</span></div>'+
     '<div class="fcard-stat"><span class="v">'+c.recep+'</span><span class="k">REC</span></div>'+
     '<div class="fcard-stat"><span class="v">'+c.saque+'</span><span class="k">SAQ</span></div></div>'+
-    '<div class="fcard-col"><div class="fcard-stat"><span class="v">'+c.salto+'</span><span class="k">SAL</span></div>'+
+    '<div class="fcard-col"><div class="fcard-stat"><span class="v">'+c.salto+'</span><span class="k">PAS</span></div>'+
     '<div class="fcard-stat"><span class="v">'+c.ritmo+'</span><span class="k">RIT</span></div>'+
     '<div class="fcard-stat"><span class="v">'+c.mental+'</span><span class="k">MEN</span></div></div>'+
     '</div></div>';
@@ -1010,7 +1010,7 @@ function openEditAttrs(id){
     '<button class="ico" style="border:none;width:30px;height:30px" onclick="openProfile(\''+p.id+'\')" aria-label="Volver"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
     '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:12px">Calificá cada cualidad del 1 al 99 según tu criterio. El puntaje general (OVR) y el color de la carta se calculan solos como el promedio.</div>'+
     attrSlider('ataque','Ataque',a.ataque)+attrSlider('recep','Recepción',a.recep)+attrSlider('saque','Saque',a.saque)+
-    attrSlider('salto','Salto',a.salto)+attrSlider('ritmo','Ritmo',a.ritmo)+attrSlider('mental','Mental',a.mental)+
+    attrSlider('salto','Pase/Armado',a.salto)+attrSlider('ritmo','Ritmo',a.ritmo)+attrSlider('mental','Mental',a.mental)+
     '<button class="btn-pri" style="margin-top:6px" onclick="openProfile(\''+p.id+'\')">Listo</button>'+
     '</div></div>';
 }
