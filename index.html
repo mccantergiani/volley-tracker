@@ -161,6 +161,12 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
 .fcard-stat .k{font-weight:600;opacity:.85}
 .fcard-tier{position:absolute;top:10px;right:16px;font-size:9px;font-weight:700;letter-spacing:1px;opacity:.55}
 .jnum-badge{position:absolute;bottom:-3px;right:-3px;min-width:16px;height:16px;padding:0 3px;border-radius:8px;font-size:9px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;border:1px solid rgba(0,0,0,0.3)}
+.fcard-injured{position:absolute;top:10px;left:16px;width:20px;height:20px;border-radius:50%;background:#e53935;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.4)}
+.fcard-injured::before{content:'';width:10px;height:2px;background:#fff;position:absolute;border-radius:1px}
+.fcard-injured::after{content:'';width:2px;height:10px;background:#fff;position:absolute;border-radius:1px}
+.rinjured{width:14px;height:14px;border-radius:50%;background:#e53935;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;position:relative}
+.rinjured::before{content:'';width:7px;height:1.6px;background:#fff;position:absolute;border-radius:1px}
+.rinjured::after{content:'';width:1.6px;height:7px;background:#fff;position:absolute;border-radius:1px}
 </style>
 </head>
 <body>
@@ -621,7 +627,7 @@ function startTeamListeners(){
         id:d.id, rid:d.id, name:data.name, number:data.number, role:data.role, gender:data.gender||'M',
         starter:!!data.starter, position:data.position||null, secondaryRoles:data.secondaryRoles||[],
         attrs:Object.assign({ataque:50,recep:50,saque:50,salto:50,ritmo:50,mental:50}, data.attrs||{}),
-        photo:data.photo||null, note:data.note||'',
+        photo:data.photo||null, note:data.note||'', injured:!!data.injured,
         stats:Object.assign(newStat(), data.stats||{})
       };
     });
@@ -834,7 +840,7 @@ function addP(){
   hideE(er);
   addDoc(rosterCol(),{
     name:nm,number:no,role:rl,gender:gn,starter:false,position:null,secondaryRoles:[],
-    attrs:{ataque:50,recep:50,saque:50,salto:50,ritmo:50,mental:50},photo:null,note:'',stats:newStat()
+    attrs:{ataque:50,recep:50,saque:50,salto:50,ritmo:50,mental:50},photo:null,note:'',injured:false,stats:newStat()
   }).catch(function(){showE(er,'No se pudo agregar. Probá de nuevo.');});
   document.getElementById('pNm').value='';document.getElementById('pNo').value='';document.getElementById('pNm').focus();
 }
@@ -879,6 +885,7 @@ function rowHtml(p){
     '<div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;cursor:pointer" onclick="openProfile(\''+p.id+'\')">'+
     '<div class="pbadge" style="background:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</div>'+
     '<div style="font-size:13px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(p.name)+'</div>'+
+    (p.injured?'<span class="rinjured" title="Lesionado"></span>':'')+
     '</div>'+
     '<span class="rtag">'+(RN[p.role]||'Jugador')+'</span>'+
     '<button class="ico" style="width:30px;height:30px;border-color:var(--border-danger)" onclick="rmP(\''+p.id+'\')" aria-label="Eliminar"><i class="ti ti-trash" aria-hidden="true" style="color:var(--text-danger);font-size:14px"></i></button></div>';
@@ -899,6 +906,7 @@ function renderCard(p){
     'linear-gradient(160deg,#e7c9a5,#b8804c 55%,#8a5a30)';
   return '<div class="fcard" style="background:'+bg+'">'+
     '<div class="fcard-tier">'+tier.toUpperCase()+'</div>'+
+    (p.injured?'<div class="fcard-injured" title="Lesionado" aria-label="Lesionado"></div>':'')+
     '<div class="fcard-top"><div><div class="fcard-ovr">'+o+'</div><div class="fcard-pos">'+(RN[p.role]||'Jugador').toUpperCase()+'</div></div>'+
     '<div class="fcard-num">#'+esc(p.number)+'</div></div>'+
     '<div class="fcard-photo">'+(p.photo?'<img src="'+p.photo+'" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">':'<i class="ti ti-shirt-sport" aria-hidden="true"></i>')+'</div>'+
@@ -941,6 +949,9 @@ function openProfileInner(id){
     '</div>'+
     '<div class="sec-t">Número de camiseta</div>'+
     '<div class="fg" style="max-width:120px;margin-bottom:8px"><input type="number" min="1" max="99" value="'+esc(p.number)+'" onchange="setPlayerNumber(\''+p.id+'\',this.value)"></div>'+
+    '<div class="sec-t">Estado</div>'+
+    '<label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13px;color:var(--text-primary)">'+
+    '<input type="checkbox" '+(p.injured?'checked':'')+' onchange="setPlayerInjured(\''+p.id+'\',this.checked)"> Lesionado</label>'+
     '<div class="sec-t">Rol y posiciones</div>'+
     '<div class="fg" style="margin-bottom:8px;max-width:180px"><label class="fl">Género</label>'+
     '<select onchange="setPlayerGender(\''+p.id+'\',this.value)">'+Object.keys(GN).map(function(g){return '<option value="'+g+'"'+(g===(p.gender||'M')?' selected':'')+'>'+GN[g]+'</option>';}).join('')+'</select></div>'+
@@ -999,6 +1010,13 @@ function setPlayerGender(id,gender){
   const p=P(id);if(!p)return;
   updateDoc(rosterDoc(id),{gender:gender}).catch(function(){});
   p.gender=gender;
+  openProfile(id);
+}
+function setPlayerInjured(id,val){
+  if(!guardEdit())return;
+  const p=P(id);if(!p)return;
+  p.injured=!!val;
+  updateDoc(rosterDoc(id),{injured:!!val}).catch(function(){});
   openProfile(id);
 }
 function setPlayerNumber(id,val){
@@ -1627,7 +1645,7 @@ Object.assign(window, {
   savePNote, scoreAction, pointUs, pointThem, pickAuthor, confirmPoint, openSub, doSub, doPositionSwap, openHist, openRally,
   editAuthor, editNote, delRally, openMenu, doRotate, nextSet, confirmFinalize, finalizeMatch, openMatchDetail,
   showStats, closeModal, st, handleLogoFile, setTeamDescription,
-  setPlayerRole, setPlayerGender, setPlayerNumber, toggleSecondaryRole, confirmDeleteMatch, deleteMatchRecord,
+  setPlayerRole, setPlayerGender, setPlayerNumber, setPlayerInjured, toggleSecondaryRole, confirmDeleteMatch, deleteMatchRecord,
   openLineupSetup, pickLineupSlot, setLineupSlot, confirmLineup, confirmDiscardMatch,
   openMembers, setMemberRole
 });
