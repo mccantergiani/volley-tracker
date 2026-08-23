@@ -152,7 +152,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
 .fcard-ovr{font-size:32px;font-weight:800;line-height:1}
 .fcard-pos{font-size:11px;font-weight:700;letter-spacing:0.5px;margin-top:2px}
 .fcard-num{font-size:14px;font-weight:700;background:rgba(255,255,255,0.4);border-radius:8px;padding:2px 8px}
-.fcard-photo{width:92px;height:92px;border-radius:50%;background:rgba(255,255,255,0.4);margin:6px auto 4px;display:flex;align-items:center;justify-content:center;font-size:44px}
+.fcard-photo{width:92px;height:92px;border-radius:50%;background:rgba(255,255,255,0.4);margin:6px auto 4px;display:flex;align-items:center;justify-content:center;font-size:44px;position:relative}
 .fcard-name{font-size:16px;font-weight:800;letter-spacing:0.5px;margin:4px 0 10px;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fcard-stats{display:flex;justify-content:center;gap:20px;border-top:1px solid rgba(0,0,0,0.18);padding-top:8px}
 .fcard-col{display:flex;flex-direction:column;gap:5px;text-align:left}
@@ -161,7 +161,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
 .fcard-stat .k{font-weight:600;opacity:.85}
 .fcard-tier{position:absolute;top:10px;right:16px;font-size:9px;font-weight:700;letter-spacing:1px;opacity:.55}
 .jnum-badge{position:absolute;bottom:-3px;right:-3px;min-width:16px;height:16px;padding:0 3px;border-radius:8px;font-size:9px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;border:1px solid rgba(0,0,0,0.3)}
-.fcard-injured{position:absolute;top:10px;left:16px;width:20px;height:20px;border-radius:50%;background:#e53935;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.4)}
+.fcard-injured{position:absolute;top:-2px;right:-2px;width:20px;height:20px;border-radius:50%;background:#e53935;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.4)}
 .fcard-injured::before{content:'';width:10px;height:2px;background:#fff;position:absolute;border-radius:1px}
 .fcard-injured::after{content:'';width:2px;height:10px;background:#fff;position:absolute;border-radius:1px}
 .rinjured{width:14px;height:14px;border-radius:50%;background:#e53935;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;position:relative}
@@ -906,10 +906,9 @@ function renderCard(p){
     'linear-gradient(160deg,#e7c9a5,#b8804c 55%,#8a5a30)';
   return '<div class="fcard" style="background:'+bg+'">'+
     '<div class="fcard-tier">'+tier.toUpperCase()+'</div>'+
-    (p.injured?'<div class="fcard-injured" title="Lesionado" aria-label="Lesionado"></div>':'')+
     '<div class="fcard-top"><div><div class="fcard-ovr">'+o+'</div><div class="fcard-pos">'+(RN[p.role]||'Jugador').toUpperCase()+'</div></div>'+
     '<div class="fcard-num">#'+esc(p.number)+'</div></div>'+
-    '<div class="fcard-photo">'+(p.photo?'<img src="'+p.photo+'" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">':'<i class="ti ti-shirt-sport" aria-hidden="true"></i>')+'</div>'+
+    '<div class="fcard-photo">'+(p.photo?'<img src="'+p.photo+'" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">':'<i class="ti ti-shirt-sport" aria-hidden="true"></i>')+(p.injured?'<div class="fcard-injured" title="Lesionado" aria-label="Lesionado"></div>':'')+'</div>'+
     '<div class="fcard-name">'+esc(p.name)+'</div>'+
     '<div class="fcard-stats">'+
     '<div class="fcard-col"><div class="fcard-stat"><span class="v">'+c.ataque+'</span><span class="k">ATA</span></div>'+
@@ -950,8 +949,8 @@ function openProfileInner(id){
     '<div class="sec-t">Número de camiseta</div>'+
     '<div class="fg" style="max-width:120px;margin-bottom:8px"><input type="number" min="1" max="99" value="'+esc(p.number)+'" onchange="setPlayerNumber(\''+p.id+'\',this.value)"></div>'+
     '<div class="sec-t">Estado</div>'+
-    '<label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13px;color:var(--text-primary)">'+
-    '<input type="checkbox" '+(p.injured?'checked':'')+' onchange="setPlayerInjured(\''+p.id+'\',this.checked)"> Lesionado</label>'+
+    '<label style="display:flex;align-items:center;justify-content:flex-start;gap:8px;margin-bottom:10px;font-size:13px;color:var(--text-primary);cursor:pointer">'+
+    '<input type="checkbox" style="width:18px;height:18px;flex:0 0 auto;padding:0" '+(p.injured?'checked':'')+' onchange="setPlayerInjured(\''+p.id+'\',this.checked)"> Lesionado</label>'+
     '<div class="sec-t">Rol y posiciones</div>'+
     '<div class="fg" style="margin-bottom:8px;max-width:180px"><label class="fl">Género</label>'+
     '<select onchange="setPlayerGender(\''+p.id+'\',this.value)">'+Object.keys(GN).map(function(g){return '<option value="'+g+'"'+(g===(p.gender||'M')?' selected':'')+'>'+GN[g]+'</option>';}).join('')+'</select></div>'+
