@@ -794,21 +794,20 @@ function openCallUp(fromMenu){
   renderCallUp();
 }
 function renderCallUp(){
-  const rows=st.players.slice().sort(function(a,b){return a.name.localeCompare(b.name);}).map(function(p){
+  const chips=st.players.slice().sort(function(a,b){return a.name.localeCompare(b.name);}).map(function(p){
     const checked=!!callUpDraft[p.id];
     const locked=p.starter;
-    return '<div class="prow" '+(locked?'':'onclick="toggleCallUp(\''+p.id+'\')"')+' style="cursor:'+(locked?'default':'pointer')+'">'+
-      '<input type="checkbox" '+(checked?'checked':'')+(locked?' disabled':'')+' onclick="event.stopPropagation();toggleCallUp(\''+p.id+'\')" style="margin-right:6px">'+
-      '<div class="pbadge" style="background:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</div>'+
-      '<div style="flex:1;font-size:13px">'+esc(p.name)+'</div><span class="rtag">'+(RN[p.role]||'Jugador')+'</span></div>';
+    const style=checked?'background:var(--bg-accent);border-color:var(--border-accent)':'';
+    return '<button class="chip" style="'+style+(locked?';opacity:.65;cursor:default':'')+'" '+(locked?'disabled':'onclick="toggleCallUp(\''+p.id+'\')"')+'>'+
+      '<b style="color:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</b> '+esc(p.name)+(locked?' <i class="ti ti-lock" aria-hidden="true" style="font-size:10px"></i>':'')+'</button>';
   }).join('');
   const n=Object.keys(callUpDraft).filter(function(k){return callUpDraft[k];}).length;
   document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet"><div class="grab"></div>'+
     '<div class="sh-head"><div style="flex:1;font-size:15px;font-weight:500;color:var(--text-primary)">Convocados para este partido</div>'+
     '<button class="ico" style="border:none;width:30px;height:30px" onclick="'+(callUpFromMenu?'closeModal()':'cancelNewMatch()')+'" aria-label="'+(callUpFromMenu?'Cerrar':'Cancelar')+'"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
     '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">'+n+' seleccionados. Los demás no aparecen para armar formación ni para hacer cambios.</div>'+
-    '<div class="plist">'+rows+'</div>'+
-    '<button class="btn-pri" style="width:100%;margin-top:10px" onclick="confirmCallUp()" '+(n<6?'disabled':'')+'>Continuar ('+n+')</button>'+
+    '<div class="chips">'+chips+'</div>'+
+    '<button class="btn-pri" style="width:100%;margin-top:12px" onclick="confirmCallUp()" '+(n<6?'disabled':'')+'>Continuar ('+n+')</button>'+
     '</div></div>';
 }
 function toggleCallUp(id){
