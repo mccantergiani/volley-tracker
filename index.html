@@ -67,6 +67,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
 .btn-sec{background:transparent;color:var(--text-primary);border:0.5px solid var(--border-strong);padding:7px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-family:var(--font-sans)}
 .btn-sec:hover{background:var(--surface-1)}
 .ico{width:36px;height:36px;border:0.5px solid var(--border-strong);border-radius:8px;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-primary);font-size:16px;flex-shrink:0}
+.ico.disabled{opacity:.35;pointer-events:none}
 .ico:hover{background:var(--surface-1)}
 .errmsg{font-size:12px;color:var(--text-danger);margin-top:5px}
 
@@ -105,6 +106,8 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
 .cstat .g{color:#8FE0B8}
 .cstat .b{color:#F0A3A3}
 .cstat .sl{color:rgba(255,255,255,0.45)}
+#lineupCourt .cell.dragover{outline:2px dashed #FFD54A;outline-offset:-2px}
+.dragchip{cursor:grab}
 
 .qsrow{display:flex;gap:6px}
 .qbtn{flex:1;padding:9px;border-radius:9px;border:0.5px solid;cursor:pointer;font-size:12px;font-weight:500;font-family:var(--font-sans);display:flex;align-items:center;justify-content:center;gap:5px}
@@ -182,7 +185,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Iniciá sesión para acceder al equipo</div>
     <button class="btn-pri" style="max-width:260px;margin:0 auto" onclick="signInGoogle()"><i class="ti ti-brand-google" aria-hidden="true"></i> Iniciar sesión con Google</button>
     <div class="errmsg" id="loginErr" style="display:none;margin-top:10px"></div>
-    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-21.8</div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-25.1</div>
   </div>
 </div>
 
@@ -304,6 +307,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
           <span class="setpill" id="mSet">Set 1</span>
           <span class="setpill" id="mSrv"></span>
         </div>
+        <button class="ico" id="undoBtn" style="width:30px;height:30px" onclick="undoLastPoint()" aria-label="Deshacer último punto"><i class="ti ti-arrow-back-up" aria-hidden="true"></i></button>
         <button class="ico" style="width:30px;height:30px" onclick="openMenu()" aria-label="Menú"><i class="ti ti-dots-vertical" aria-hidden="true"></i></button>
       </div>
       <div style="font-size:11px;color:var(--text-muted);display:none;padding:0 2px" id="mMeta"></div>
@@ -354,17 +358,20 @@ const RC={setter:'#5B4FBE',opuesto:'#A02060',punta:'#1E7E5A',central:'#1A6FA8',l
 const RN={setter:'Armador',opuesto:'Opuesto',punta:'Punta',central:'Central',libero:'Líbero'};
 const GN={M:'Masculino',F:'Femenino',X:'Otro'};
 const GP=[4,3,2,5,6,1];
-const METRICS=[['bloque','Bloque',true],['recep','Recepción',false],['ataque','Ataque',true],['saque','Saque',true]];
-const MLBL={bloque:'Bloque',recep:'Recepción',ataque:'Ataque',saque:'Saque'};
+const METRICS=[['bloque','Bloque',true],['recep','Recepción',false],['armada','Armada',false],['ataque','Ataque',true],['saque','Saque',true]];
+const MLBL={bloque:'Bloque',recep:'Recepción',armada:'Armada',ataque:'Ataque',saque:'Saque'};
 
 let st={teamName:'',teamLogo:null,teamDescription:'',players:[],score:{us:0,them:0},set:1,serving:'us',rallies:[],career:{},matches:[],
   setHistory:[],opponent:'',matchName:'',matchPlace:'',matchDate:'',active:false,participants:[],
-  members:[],myRole:'viewer'};
+  members:[],myRole:'viewer',calledUp:[],liberoSwap:null,setStartServing:'us'};
 let lineupDraft={}, pendingMatchDate='';
 let selId=null, subForId=null;
 let currentUser=null, teamId=null, unsubs=[];
+let callUpDraft=null, callUpFromMenu=false;
+let undoInFlight=false;
+let lineupDrag=null;
 
-function newStat(){return{bloque:{g:0,b:0},recep:{g:0,b:0},ataque:{g:0,b:0},saque:{g:0,b:0},puntos:0};}
+function newStat(){return{bloque:{g:0,b:0},recep:{g:0,b:0},armada:{g:0,b:0},ataque:{g:0,b:0},saque:{g:0,b:0},puntos:0};}
 function P(id){return st.players.find(p=>p.id===id);}
 function iSt(p){if(!p.stats)p.stats=newStat();return p.stats;}
 function showSc(n){
@@ -399,6 +406,13 @@ function careerCol(){return collection(db,'teams',teamId,'career');}
 function careerDocRef(rid){return doc(db,'teams',teamId,'career',rid);}
 function membersCol(){return collection(db,'teams',teamId,'members');}
 function memberDocRef(uid){return doc(db,'teams',teamId,'members',uid);}
+function calledUpIds(){
+  return (st.calledUp && st.calledUp.length) ? st.calledUp : st.players.map(function(p){return p.id;});
+}
+function benchPool(){
+  const ids=calledUpIds();
+  return st.players.filter(function(p){return !p.starter && ids.indexOf(p.id)>=0;});
+}
 function isEditor(){return st.myRole==='editor';}
 function guardEdit(){
   if(isEditor())return true;
@@ -646,6 +660,9 @@ function startTeamListeners(){
     st.setHistory=d.setHistory||[];
     st.active=!!d.active;
     st.participants=d.participants||[];
+    st.calledUp=d.calledUp||[];
+    st.liberoSwap=d.liberoSwap||null;
+    st.setStartServing=d.setStartServing||'us';
     rerenderCurrentScreen();
   }));
   unsubs.push(onSnapshot(query(ralliesCol(), orderBy('ts','asc')), function(qs){
@@ -653,7 +670,8 @@ function startTeamListeners(){
       const data=d.data();
       return {id:d.id, n:i+1, side:data.side, playerId:data.playerId||null, note:data.note||'',
         us:data.us, them:data.them, rotated:!!data.rotated, actionKey:data.actionKey||null,
-        setterPos:(typeof data.setterPos==='number')?data.setterPos:null};
+        setterPos:(typeof data.setterPos==='number')?data.setterPos:null,
+        positionsBefore:data.positionsBefore||null};
     });
     rRallyLog();
   }));
@@ -763,9 +781,47 @@ async function goNewMatch(){
   pendingMatchDate=todayStr();
   updateDoc(liveRef(),{
     active:true,opponent:'',matchName:'',matchPlace:'',matchDate:pendingMatchDate,
-    'score.us':0,'score.them':0,set:1,setHistory:[],participants:[]
+    'score.us':0,'score.them':0,set:1,setHistory:[],participants:[],
+    calledUp:[],liberoSwap:null
   }).catch(function(){});
-  openLineupSetup();
+  openCallUp();
+}
+function openCallUp(fromMenu){
+  callUpDraft={};
+  callUpFromMenu=!!fromMenu;
+  const preset=(st.calledUp&&st.calledUp.length)?st.calledUp:st.players.map(function(p){return p.id;});
+  st.players.forEach(function(p){callUpDraft[p.id]=preset.indexOf(p.id)>=0;});
+  renderCallUp();
+}
+function renderCallUp(){
+  const rows=st.players.slice().sort(function(a,b){return a.name.localeCompare(b.name);}).map(function(p){
+    const checked=!!callUpDraft[p.id];
+    const locked=p.starter;
+    return '<div class="prow" '+(locked?'':'onclick="toggleCallUp(\''+p.id+'\')"')+' style="cursor:'+(locked?'default':'pointer')+'">'+
+      '<input type="checkbox" '+(checked?'checked':'')+(locked?' disabled':'')+' onclick="event.stopPropagation();toggleCallUp(\''+p.id+'\')" style="margin-right:6px">'+
+      '<div class="pbadge" style="background:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</div>'+
+      '<div style="flex:1;font-size:13px">'+esc(p.name)+'</div><span class="rtag">'+(RN[p.role]||'Jugador')+'</span></div>';
+  }).join('');
+  const n=Object.keys(callUpDraft).filter(function(k){return callUpDraft[k];}).length;
+  document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet"><div class="grab"></div>'+
+    '<div class="sh-head"><div style="flex:1;font-size:15px;font-weight:500;color:var(--text-primary)">Convocados para este partido</div>'+
+    '<button class="ico" style="border:none;width:30px;height:30px" onclick="'+(callUpFromMenu?'closeModal()':'cancelNewMatch()')+'" aria-label="'+(callUpFromMenu?'Cerrar':'Cancelar')+'"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
+    '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">'+n+' seleccionados. Los demás no aparecen para armar formación ni para hacer cambios.</div>'+
+    '<div class="plist">'+rows+'</div>'+
+    '<button class="btn-pri" style="width:100%;margin-top:10px" onclick="confirmCallUp()" '+(n<6?'disabled':'')+'>Continuar ('+n+')</button>'+
+    '</div></div>';
+}
+function toggleCallUp(id){
+  const p=P(id);if(p&&p.starter)return;
+  callUpDraft[id]=!callUpDraft[id];
+  renderCallUp();
+}
+async function confirmCallUp(){
+  const ids=Object.keys(callUpDraft).filter(function(k){return callUpDraft[k];});
+  if(ids.length<6){showToast('Necesitás al menos 6 convocados.');return;}
+  await updateDoc(liveRef(),{calledUp:ids}).catch(function(){});
+  if(callUpFromMenu)closeModal();
+  else openLineupSetup();
 }
 function openLineupSetup(){
   lineupDraft={};
@@ -773,6 +829,17 @@ function openLineupSetup(){
   renderLineupSetup();
 }
 function renderLineupSetup(){
+  const cells=GP.map(function(pos){
+    const rid=lineupDraft[pos];const p=rid?P(rid):null;
+    const inner=p?'<div style="display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none"><div class="pbadge" style="background:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</div><div style="font-size:9px;color:#fff;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(p.name)+'</div></div>'
+                 :'<span style="font-size:10px;color:rgba(255,255,255,.5)">vacío</span>';
+    return '<div class="cell" data-pos="'+pos+'" data-rid="'+(rid||'')+'"><span class="poslbl">'+pos+'</span>'+inner+'</div>';
+  }).join('');
+  const usedRids={};Object.keys(lineupDraft).forEach(function(k){usedRids[lineupDraft[k]]=true;});
+  const avail=st.players.filter(function(p){return !usedRids[p.id] && calledUpIds().indexOf(p.id)>=0;});
+  const chips=avail.map(function(p){
+    return '<div class="chip dragchip" data-rid="'+p.id+'" style="touch-action:none"><b style="color:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</b> '+esc(p.name)+'</div>';
+  }).join('');
   const rows=[1,2,3,4,5,6].map(function(pos){
     const rid=lineupDraft[pos];const p=rid?P(rid):null;
     const content=p
@@ -783,14 +850,81 @@ function renderLineupSetup(){
   document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet"><div class="grab"></div>'+
     '<div class="sh-head"><div style="flex:1;font-size:15px;font-weight:500;color:var(--text-primary)">Formación inicial</div>'+
     '<button class="ico" style="border:none;width:30px;height:30px" onclick="cancelNewMatch()" aria-label="Cancelar"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
-    '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px">Elegí qué jugador ocupa cada posición para este partido. Los que no asignes quedan en banca.</div>'+
+    '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px">Arrastrá un jugador a una posición, o usá la lista de abajo.</div>'+
+    '<div class="court" style="margin-bottom:8px"><div class="netlbl">RED</div><div class="cgrid" id="lineupCourt">'+cells+'</div></div>'+
+    '<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px" id="lineupBench">'+(chips||'<span style="font-size:11px;color:var(--text-muted)">No quedan convocados sin asignar.</span>')+'</div>'+
+    '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px">O elegí por posición desde la lista:</div>'+
     '<div class="plist">'+rows+'</div>'+
     '<button class="btn-pri" style="margin-top:10px" onclick="confirmLineup()">Continuar</button>'+
     '</div></div>';
+  attachLineupDrag();
+}
+function attachLineupDrag(){
+  const els=document.querySelectorAll('#lineupBench .dragchip, #lineupCourt .cell');
+  els.forEach(function(el){
+    if(!el.getAttribute('data-rid'))return;
+    el.addEventListener('pointerdown', function(ev){
+      if(ev.pointerType==='mouse' && ev.button!==0)return;
+      ev.preventDefault();
+      beginLineupDrag(el, ev);
+    });
+  });
+}
+function beginLineupDrag(sourceEl, ev){
+  const rid=sourceEl.getAttribute('data-rid');if(!rid)return;
+  const sourcePos=sourceEl.matches('.cell')?Number(sourceEl.getAttribute('data-pos')):null;
+  const ghost=sourceEl.cloneNode(true);
+  ghost.style.position='fixed';ghost.style.pointerEvents='none';ghost.style.zIndex='9999';
+  ghost.style.opacity='0.85';ghost.style.width=sourceEl.offsetWidth+'px';
+  ghost.style.left=(ev.clientX-sourceEl.offsetWidth/2)+'px';ghost.style.top=(ev.clientY-20)+'px';
+  document.body.appendChild(ghost);
+  sourceEl.style.opacity='0.3';
+  lineupDrag={rid:rid, sourcePos:sourcePos, ghost:ghost, sourceEl:sourceEl};
+  function move(e){
+    ghost.style.left=(e.clientX-ghost.offsetWidth/2)+'px';ghost.style.top=(e.clientY-20)+'px';
+    document.querySelectorAll('#lineupCourt .cell.dragover').forEach(function(c){c.classList.remove('dragover');});
+    const t=document.elementFromPoint(e.clientX,e.clientY);
+    const cell=t&&t.closest?t.closest('#lineupCourt .cell'):null;
+    if(cell)cell.classList.add('dragover');
+  }
+  function finish(e){
+    document.removeEventListener('pointermove',move);
+    document.removeEventListener('pointerup',finish);
+    document.removeEventListener('pointercancel',cancelDrag);
+    ghost.remove();
+    document.querySelectorAll('#lineupCourt .cell.dragover').forEach(function(c){c.classList.remove('dragover');});
+    const t=document.elementFromPoint(e.clientX,e.clientY);
+    const cell=t&&t.closest?t.closest('#lineupCourt .cell'):null;
+    if(cell){
+      const targetPos=Number(cell.getAttribute('data-pos'));
+      dropLineupPlayer(rid, sourcePos, targetPos);
+    }
+    lineupDrag=null;
+  }
+  function cancelDrag(){
+    document.removeEventListener('pointermove',move);
+    document.removeEventListener('pointerup',finish);
+    document.removeEventListener('pointercancel',cancelDrag);
+    ghost.remove();lineupDrag=null;
+  }
+  document.addEventListener('pointermove',move);
+  document.addEventListener('pointerup',finish);
+  document.addEventListener('pointercancel',cancelDrag);
+}
+function dropLineupPlayer(rid, sourcePos, targetPos){
+  if(sourcePos===targetPos)return;
+  if(sourcePos==null){
+    lineupDraft[targetPos]=rid;
+  }else{
+    const displaced=lineupDraft[targetPos];
+    lineupDraft[targetPos]=rid;
+    if(displaced)lineupDraft[sourcePos]=displaced;else delete lineupDraft[sourcePos];
+  }
+  renderLineupSetup();
 }
 function pickLineupSlot(pos){
   const usedRids={};Object.keys(lineupDraft).forEach(function(k){if(Number(k)!==pos)usedRids[lineupDraft[k]]=true;});
-  const avail=st.players.filter(function(p){return !usedRids[p.id];});
+  const avail=st.players.filter(function(p){return !usedRids[p.id] && calledUpIds().indexOf(p.id)>=0;});
   let chipsHtml=avail.map(function(p){return '<button class="chip" onclick="setLineupSlot('+pos+',\''+p.id+'\')"><b style="color:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</b> '+esc(p.name)+'</button>';}).join('');
   if(lineupDraft[pos])chipsHtml+='<button class="chip" style="color:var(--text-danger);border-color:var(--border-danger)" onclick="setLineupSlot('+pos+',null)">Dejar vacío</button>';
   if(!chipsHtml)chipsHtml='<p style="font-size:12px;color:var(--text-muted)">No quedan jugadores disponibles.</p>';
@@ -979,7 +1113,7 @@ function openPlayerHistoryInner(id){
   const p=P(id);if(!p)return;
   const matches=st.matches.filter(function(m){return (m.players||[]).some(function(mp){return mp.rid===p.rid;});});
   const pct=function(g,b){const t=(g||0)+(b||0);return t?Math.round((g/t)*100)+'%':'—';};
-  const matchRatio=function(lbl,obj){return '<span style="margin-right:10px">'+lbl+' <b style="color:var(--text-primary)">'+pct(obj.g,obj.b)+'</b></span>';};
+  const matchRatio=function(lbl,obj){obj=obj||{g:0,b:0};return '<span style="margin-right:10px">'+lbl+' <b style="color:var(--text-primary)">'+pct(obj.g,obj.b)+'</b></span>';};
   const matchesHtml=matches.length?matches.map(function(m){
     const mp=m.players.find(function(x){return x.rid===p.rid;});
     if(!mp)return '';
@@ -988,7 +1122,7 @@ function openPlayerHistoryInner(id){
       '<div class="rtxt" style="flex:1">'+esc(m.name)+' · vs '+esc(m.opponent)+'</div><span class="rsc">'+mp.puntos+' pts</span></div>'+
       '<div style="font-size:10px;color:var(--text-muted);margin-top:3px;padding-left:14px">'+fmtDate(m.date)+' · Jugó de '+(RN[mp.role]||'Jugador')+'</div>'+
       '<div style="display:flex;flex-wrap:wrap;margin-top:5px;padding-left:14px;font-size:10px;color:var(--text-secondary)">'+
-      matchRatio('ATA',mp.ataque)+matchRatio('BLQ',mp.bloque)+matchRatio('REC',mp.recep)+matchRatio('SAQ',mp.saque)+
+      matchRatio('ATA',mp.ataque)+matchRatio('BLQ',mp.bloque)+matchRatio('REC',mp.recep)+matchRatio('SAQ',mp.saque)+matchRatio('ARM',mp.armada)+
       '</div></div>';
   }).join(''):'<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:20px 8px">Sin partidos registrados.</p>';
   document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet" style="max-width:400px"><div class="grab"></div>'+
@@ -1133,7 +1267,7 @@ function finishNewMatchSetup(s){
     opponent: oppI?oppI.value.trim():'',
     matchPlace: placeI?placeI.value.trim():'',
     matchDate: (dateI&&dateI.value)?dateI.value:st.matchDate,
-    serving: s
+    serving: s, setStartServing: s
   }).catch(function(){});
   closeModal();
 }
@@ -1147,7 +1281,7 @@ function askServe(){
     '<button class="chip" style="flex:1;background:var(--bg-danger);color:var(--text-danger);border-color:var(--border-danger)" onclick="setServe(\'them\')">'+esc(oppName())+'</button>'+
     '</div></div></div>';
 }
-function setServe(s){if(!guardEdit())return;updateDoc(liveRef(),{serving:s}).catch(function(){});closeModal();}
+function setServe(s){if(!guardEdit())return;updateDoc(liveRef(),{serving:s,setStartServing:s}).catch(function(){});closeModal();}
 
 /* ---------- Match rendering ---------- */
 function rMatch(){
@@ -1163,6 +1297,8 @@ function rMatch(){
   const meta=[st.matchName,st.matchPlace].filter(Boolean).join(' · ');
   const metaEl=document.getElementById('mMeta');
   metaEl.textContent=meta;metaEl.style.display=meta?'block':'none';
+  const undoBtn=document.getElementById('undoBtn');
+  if(undoBtn)undoBtn.classList.toggle('disabled', !st.rallies.length);
   rCourt();rPanel();rRallyLog();
 }
 function rRallyLog(){
@@ -1220,6 +1356,17 @@ function rPanel(){
     '<button class="arrow dn" onclick="bump(\''+p.id+'\',\''+k+'\',\'b\',1)" aria-label="'+lbl+' mal"><i class="ti ti-arrow-down" aria-hidden="true"></i></button>'+
     '</div></div>';
   }).join('');
+  let quickBtn='';
+  if(p.starter && p.role==='central' && backRow(p.position) && !st.liberoSwap){
+    const liberos=benchPool().filter(function(x){return x.role==='libero';});
+    if(liberos.length===1) quickBtn='<button class="btn-sec" style="width:100%;margin-top:6px;color:var(--text-accent)" onclick="quickLiberoIn(\''+p.id+'\',\''+liberos[0].id+'\')"><i class="ti ti-arrows-exchange" aria-hidden="true"></i> Meter líbero</button>';
+    else if(liberos.length>1) quickBtn='<button class="btn-sec" style="width:100%;margin-top:6px;color:var(--text-accent)" onclick="pickLiberoFor(\''+p.id+'\')"><i class="ti ti-arrows-exchange" aria-hidden="true"></i> Meter líbero</button>';
+  }
+  if(st.liberoSwap && st.liberoSwap.liberoId===p.id){
+    const c=P(st.liberoSwap.centralId);
+    const urgent=p.position===5;
+    quickBtn='<button class="btn-sec" style="width:100%;margin-top:6px;color:'+(urgent?'var(--text-danger)':'var(--text-accent)')+'" onclick="quickLiberoOut()"><i class="ti ti-arrows-exchange" aria-hidden="true"></i> '+(urgent?'¡Sacar líbero ya! ':'Sacar líbero ')+(c?'(vuelve #'+esc(c.number)+' '+esc(c.name)+')':'')+'</button>';
+  }
   panel.innerHTML=
     '<div class="sh-head" style="cursor:pointer" onclick="openProfile(\''+p.id+'\')"><div class="pbadge" style="width:34px;height:34px;font-size:13px;background:'+col+'">'+esc(p.number)+'</div>'+
     '<div style="flex:1"><div style="font-size:14px;font-weight:500;color:var(--text-primary)">'+esc(p.name)+'</div>'+
@@ -1230,7 +1377,48 @@ function rPanel(){
     '<span><i class="ti ti-trophy" aria-hidden="true" style="color:var(--text-accent)"></i> fue punto</span></div>'+
     rows+
     '<input type="text" id="pObs" placeholder="Comentario del jugador" value="'+esc(p.note||'')+'" onchange="savePNote(\''+p.id+'\',this.value)" style="margin-top:8px;height:32px">'+
-    '<button class="btn-sec" style="width:100%;margin-top:6px" onclick="openSub(\''+p.id+'\')"><i class="ti ti-switch-horizontal" aria-hidden="true"></i> Reemplazar</button>';
+    '<button class="btn-sec" style="width:100%;margin-top:6px" onclick="openSub(\''+p.id+'\')"><i class="ti ti-switch-horizontal" aria-hidden="true"></i> Reemplazar</button>'+
+    quickBtn;
+}
+function backRow(pos){ return pos===1||pos===5||pos===6; }
+function quickLiberoIn(centralId, liberoId){
+  if(!guardEdit())return;
+  const central=P(centralId), libero=P(liberoId);
+  if(!central||!libero)return;
+  if(!central.starter || !backRow(central.position)){ showToast('Ese jugador ya no está en zaga.'); return; }
+  const pos=central.position;
+  const batch=writeBatch(db);
+  batch.update(rosterDoc(libero.id),{starter:true,position:pos});
+  batch.update(rosterDoc(central.id),{starter:false,position:null});
+  batch.commit().then(function(){
+    return updateDoc(liveRef(),{participants:arrayUnion(libero.id), liberoSwap:{liberoId:libero.id,centralId:central.id}});
+  }).catch(function(){ showToast('No se pudo hacer el cambio.'); });
+  selId=libero.id;closeModal();
+}
+async function quickLiberoOut(){
+  if(!guardEdit())return;
+  const swap=st.liberoSwap;if(!swap)return;
+  const libero=P(swap.liberoId), central=P(swap.centralId);
+  if(!libero || !libero.starter){ updateDoc(liveRef(),{liberoSwap:null}).catch(function(){}); return; }
+  if(!central || central.starter){
+    updateDoc(liveRef(),{liberoSwap:null}).catch(function(){});
+    showToast('El cambio automático ya no es válido; usá "Reemplazar".');
+    return;
+  }
+  const pos=libero.position;
+  const batch=writeBatch(db);
+  batch.update(rosterDoc(central.id),{starter:true,position:pos});
+  batch.update(rosterDoc(libero.id),{starter:false,position:null});
+  batch.commit().then(function(){ return updateDoc(liveRef(),{liberoSwap:null}); }).catch(function(){});
+  selId=central.id;
+}
+function pickLiberoFor(centralId){
+  const liberos=benchPool().filter(function(p){return p.role==='libero';});
+  document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet" style="max-width:340px"><div class="grab"></div>'+
+    '<div class="sh-head"><div style="flex:1;font-size:15px;font-weight:500">¿Qué líbero entra?</div>'+
+    '<button class="ico" style="border:none;width:30px;height:30px" onclick="closeModal()" aria-label="Cerrar"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
+    '<div class="chips">'+liberos.map(function(p){return '<button class="chip" onclick="quickLiberoIn(\''+centralId+'\',\''+p.id+'\')"><b>'+esc(p.number)+'</b> '+esc(p.name)+'</button>';}).join('')+'</div>'+
+    '</div></div>';
 }
 function bump(id,k,gb,d){
   if(!guardEdit())return;
@@ -1255,13 +1443,15 @@ function recordPoint(side,playerId,note,actionKey){
   if(side==='us'){upd['score.us']=increment(1);upd.serving='us';}
   else{upd['score.them']=increment(1);upd.serving='them';}
   updateDoc(liveRef(),upd).catch(function(){});
+  const positionsBefore={};
+  st.players.forEach(function(p){ if(p.starter) positionsBefore[p.id]=p.position; });
   if(rotated)doRotate();
   const setter=st.players.find(function(p){return p.starter&&p.role==='setter';});
   const setterPos=setter?(rotated?(setter.position===1?6:setter.position-1):setter.position):null;
   addDoc(ralliesCol(),{
     side:side,playerId:playerId||null,note:note||'',us:nextUs,them:nextThem,
     rotated:!!rotated,actionKey:actionKey||null,ts:serverTimestamp(),
-    setterPos:setterPos
+    setterPos:setterPos,positionsBefore:positionsBefore
   }).catch(function(){});
 }
 async function doRotate(){
@@ -1300,7 +1490,7 @@ function confirmPoint(){
 
 function openSub(id){
   subForId=id;const out=P(id);
-  const bench=st.players.filter(function(p){return !p.starter;});
+  const bench=benchPool();
   const onCourt=st.players.filter(function(p){return p.starter&&p.id!==id;});
   const rowSub=function(p,action){return '<div class="prow" onclick="'+action+'" style="cursor:pointer"><div class="pbadge" style="background:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</div><div style="flex:1;font-size:13px">'+esc(p.name)+'</div><span class="rtag">'+(RN[p.role]||'Jugador')+'</span>'+(p.starter?'<span class="ptag">Pos '+p.position+'</span>':'')+'<i class="ti ti-arrow-right" aria-hidden="true" style="color:var(--text-accent)"></i></div>';};
   document.getElementById('modal').innerHTML=
@@ -1321,7 +1511,11 @@ function doSub(inId){
   batch.update(rosterDoc(inn.id),{starter:true,position:out.position});
   batch.update(rosterDoc(out.id),{starter:false,position:null});
   batch.commit().catch(function(){});
-  updateDoc(liveRef(),{participants:arrayUnion(inn.id)}).catch(function(){});
+  const liveUpd={participants:arrayUnion(inn.id)};
+  if(st.liberoSwap && (st.liberoSwap.liberoId===out.id || st.liberoSwap.centralId===out.id || st.liberoSwap.liberoId===inn.id || st.liberoSwap.centralId===inn.id)){
+    liveUpd.liberoSwap=null;
+  }
+  updateDoc(liveRef(),liveUpd).catch(function(){});
   selId=inn.id;
   closeModal();
 }
@@ -1333,6 +1527,9 @@ function doPositionSwap(outId,otherId){
   batch.update(rosterDoc(out.id),{position:other.position});
   batch.update(rosterDoc(other.id),{position:out.position});
   batch.commit().catch(function(){});
+  if(st.liberoSwap && (st.liberoSwap.liberoId===out.id || st.liberoSwap.centralId===out.id || st.liberoSwap.liberoId===other.id || st.liberoSwap.centralId===other.id)){
+    updateDoc(liveRef(),{liberoSwap:null}).catch(function(){});
+  }
   closeModal();
 }
 
@@ -1392,19 +1589,60 @@ function editNote(n,v){
   const r=st.rallies.find(function(x){return x.n===n;});if(!r)return;
   updateDoc(rallyDocRef(r.id),{note:v.trim()}).catch(function(){});
 }
-function delRally(n){
-  const r=st.rallies.find(function(x){return x.n===n;});if(!r)return;
-  updateDoc(liveRef(),{
-    'score.us':increment(r.side==='us'?-1:0),
-    'score.them':increment(r.side==='them'?-1:0)
-  }).catch(function(){});
+function prevServingFor(r){
+  const idx=st.rallies.findIndex(function(x){return x.id===r.id;});
+  if(idx>0)return st.rallies[idx-1].side;
+  return st.setStartServing||'us';
+}
+async function undoRally(r, isLastRally){
+  if(undoInFlight)return;
+  undoInFlight=true;
+  try{
+    await runTransaction(db, async function(tx){
+      const liveSnap=await tx.get(liveRef());
+      if(!liveSnap.exists())throw new Error('no-live');
+      const d=liveSnap.data();
+      const upd={score:{
+        us:Math.max(0,(d.score&&d.score.us||0)-(r.side==='us'?1:0)),
+        them:Math.max(0,(d.score&&d.score.them||0)-(r.side==='them'?1:0))
+      }};
+      if(isLastRally)upd.serving=prevServingFor(r);
+      tx.update(liveRef(), upd);
+      tx.delete(rallyDocRef(r.id));
+    });
+  }catch(e){
+    showToast('No se pudo deshacer el punto. Probá de nuevo.');
+    undoInFlight=false;
+    return;
+  }
+  const jobs=[];
+  if(isLastRally && r.positionsBefore){
+    const batch=writeBatch(db);
+    Object.keys(r.positionsBefore).forEach(function(pid){
+      batch.update(rosterDoc(pid),{position:r.positionsBefore[pid]});
+    });
+    jobs.push(batch.commit().catch(function(){}));
+  }
   if(r.playerId){
     const upd={'stats.puntos':increment(-1)};
     if(r.actionKey)upd['stats.'+r.actionKey+'.g']=increment(-1);
-    updateDoc(rosterDoc(r.playerId),upd).catch(function(){});
+    jobs.push(updateDoc(rosterDoc(r.playerId),upd).catch(function(){}));
   }
-  deleteDoc(rallyDocRef(r.id)).catch(function(){});
+  await Promise.all(jobs);
+  undoInFlight=false;
   closeModal();
+  showToast('Punto deshecho.');
+}
+function undoLastPoint(){
+  if(!guardEdit())return;
+  if(!st.rallies.length){showToast('No hay puntos para deshacer.');return;}
+  undoRally(st.rallies[st.rallies.length-1], true);
+}
+function delRally(n){
+  if(!guardEdit())return;
+  const r=st.rallies.find(function(x){return x.n===n;});if(!r)return;
+  const isLast=st.rallies.length && r.id===st.rallies[st.rallies.length-1].id;
+  undoRally(r, isLast);
 }
 
 function openMenu(){
@@ -1413,6 +1651,7 @@ function openMenu(){
     '<div class="sh-head"><div style="flex:1;font-size:15px;font-weight:500;color:var(--text-primary)">Opciones</div>'+
     '<button class="ico" style="border:none;width:30px;height:30px" onclick="closeModal()" aria-label="Cerrar"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
     '<button class="btn-sec" style="width:100%;margin-bottom:8px;text-align:left" onclick="openHist()"><i class="ti ti-history" aria-hidden="true"></i> Historial de puntos</button>'+
+    '<button class="btn-sec" style="width:100%;margin-bottom:8px;text-align:left" onclick="openCallUp(true)"><i class="ti ti-clipboard-list" aria-hidden="true"></i> Editar convocados</button>'+
     '<button class="btn-sec" style="width:100%;margin-bottom:8px;text-align:left" onclick="doRotate();closeModal()"><i class="ti ti-rotate-clockwise" aria-hidden="true"></i> Rotar manualmente</button>'+
     '<button class="btn-sec" style="width:100%;margin-bottom:8px;text-align:left" onclick="showStats()"><i class="ti ti-chart-bar" aria-hidden="true"></i> Estadísticas del set</button>'+
     '<button class="btn-sec" style="width:100%;margin-bottom:8px;text-align:left" onclick="nextSet()"><i class="ti ti-player-track-next" aria-hidden="true"></i> Cerrar set y empezar otro</button>'+
@@ -1454,7 +1693,8 @@ async function finalizeMatch(){
     const s=iSt(p);
     return {rid:p.rid,name:p.name,number:p.number,role:p.role,puntos:s.puntos,
       ataque:{g:s.ataque.g,b:s.ataque.b},bloque:{g:s.bloque.g,b:s.bloque.b},
-      recep:{g:s.recep.g,b:s.recep.b},saque:{g:s.saque.g,b:s.saque.b}};
+      recep:{g:s.recep.g,b:s.recep.b},saque:{g:s.saque.g,b:s.saque.b},
+      armada:{g:s.armada.g,b:s.armada.b}};
   });
   try{
     await addDoc(matchesCol(),{
@@ -1472,7 +1712,8 @@ async function finalizeMatch(){
         'ataque.g':increment(p.ataque.g), 'ataque.b':increment(p.ataque.b),
         'bloque.g':increment(p.bloque.g), 'bloque.b':increment(p.bloque.b),
         'recep.g':increment(p.recep.g), 'recep.b':increment(p.recep.b),
-        'saque.g':increment(p.saque.g), 'saque.b':increment(p.saque.b)
+        'saque.g':increment(p.saque.g), 'saque.b':increment(p.saque.b),
+        'armada.g':increment(p.armada.g), 'armada.b':increment(p.armada.b)
       },{merge:true});
     }catch(e){}
   }
@@ -1482,7 +1723,8 @@ async function finalizeMatch(){
   await clearRallies();
   updateDoc(liveRef(),{
     active:false, opponent:'', matchName:'', matchPlace:'', matchDate:'',
-    'score.us':0,'score.them':0, set:1, setHistory:[], participants:[]
+    'score.us':0,'score.them':0, set:1, setHistory:[], participants:[],
+    calledUp:[], liberoSwap:null
   }).catch(function(){});
   closeModal();showSc('home');
 }
@@ -1509,14 +1751,15 @@ function rHistory(){
 function openMatchDetail(id){
   const m=st.matches.find(function(x){return x.id===id;});if(!m)return;
   const setsHtml=m.sets.map(function(s){return '<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:0.5px solid var(--border)"><span>Set '+s.set+'</span><span style="font-weight:500">'+s.us+' - '+s.them+'</span></div>';}).join('');
-  const cellv=function(p,k){return '<span style="color:var(--text-success)">'+p[k].g+'</span>/<span style="color:var(--text-danger)">'+p[k].b+'</span>';};
+  const cellv=function(p,k){const s=p[k]||{g:0,b:0};return '<span style="color:var(--text-success)">'+s.g+'</span>/<span style="color:var(--text-danger)">'+s.b+'</span>';};
   const rows=m.players.map(function(p){return '<tr><td style="padding:6px 4px"><span class="pbadge" style="width:22px;height:22px;font-size:10px;display:inline-flex;background:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</span></td>'+
     '<td style="padding:6px 4px;font-size:12px">'+esc(p.name)+'</td>'+
     '<td style="padding:6px 4px;font-size:12px;font-weight:500;color:var(--text-accent)">'+p.puntos+'</td>'+
     '<td style="padding:6px 4px;font-size:12px">'+cellv(p,'ataque')+'</td>'+
     '<td style="padding:6px 4px;font-size:12px">'+cellv(p,'bloque')+'</td>'+
     '<td style="padding:6px 4px;font-size:12px">'+cellv(p,'recep')+'</td>'+
-    '<td style="padding:6px 4px;font-size:12px">'+cellv(p,'saque')+'</td></tr>';}).join('');
+    '<td style="padding:6px 4px;font-size:12px">'+cellv(p,'saque')+'</td>'+
+    '<td style="padding:6px 4px;font-size:12px">'+cellv(p,'armada')+'</td></tr>';}).join('');
   const th=function(t){return '<th style="text-align:left;font-size:11px;color:var(--text-secondary);font-weight:500;padding:4px">'+t+'</th>';};
   document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet"><div class="grab"></div>'+
     '<div class="sh-head"><div style="flex:1"><div style="font-size:15px;font-weight:500;color:var(--text-primary)">'+esc(m.name)+'</div>'+
@@ -1524,7 +1767,7 @@ function openMatchDetail(id){
     '<button class="ico" style="border:none;width:30px;height:30px" onclick="closeModal()" aria-label="Cerrar"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
     '<div style="margin-bottom:10px">'+setsHtml+'</div>'+
     '<table style="width:100%;border-collapse:collapse"><thead><tr style="border-bottom:0.5px solid var(--border-strong)">'+
-    '<th></th>'+th('Jugador')+th('Pts')+th('Ataque')+th('Bloque')+th('Recep')+th('Saque')+'</tr></thead>'+
+    '<th></th>'+th('Jugador')+th('Pts')+th('Ataque')+th('Bloque')+th('Recep')+th('Saque')+th('Armada')+'</tr></thead>'+
     '<tbody>'+rows+'</tbody></table>'+
     '<button class="btn-sec" style="width:100%;margin-top:14px;color:var(--text-danger);border-color:var(--border-danger)" onclick="confirmDeleteMatch(\''+id+'\')"><i class="ti ti-trash" aria-hidden="true"></i> Eliminar partido</button>'+
     '</div></div>';
@@ -1551,14 +1794,15 @@ async function deleteMatchRecord(id){
         const ref=careerDocRef(p.rid);
         const snap=await tx.get(ref);
         const c=snap.exists()?snap.data():{};
-        const at=c.ataque||{},bl=c.bloque||{},re=c.recep||{},sa=c.saque||{};
+        const at=c.ataque||{},bl=c.bloque||{},re=c.recep||{},sa=c.saque||{},ar=c.armada||{};
         tx.set(ref,{
           matches:clampSub(c.matches,1),
           puntos:clampSub(c.puntos,p.puntos||0),
           ataque:{g:clampSub(at.g,(p.ataque&&p.ataque.g)||0),b:clampSub(at.b,(p.ataque&&p.ataque.b)||0)},
           bloque:{g:clampSub(bl.g,(p.bloque&&p.bloque.g)||0),b:clampSub(bl.b,(p.bloque&&p.bloque.b)||0)},
           recep:{g:clampSub(re.g,(p.recep&&p.recep.g)||0),b:clampSub(re.b,(p.recep&&p.recep.b)||0)},
-          saque:{g:clampSub(sa.g,(p.saque&&p.saque.g)||0),b:clampSub(sa.b,(p.saque&&p.saque.b)||0)}
+          saque:{g:clampSub(sa.g,(p.saque&&p.saque.g)||0),b:clampSub(sa.b,(p.saque&&p.saque.b)||0)},
+          armada:{g:clampSub(ar.g,(p.armada&&p.armada.g)||0),b:clampSub(ar.b,(p.armada&&p.armada.b)||0)}
         },{merge:true});
       });
     }catch(e){}
@@ -1572,21 +1816,22 @@ function showStats(){
   const played=st.players.filter(function(p){return partIds.indexOf(p.id)>=0;});
   const tit=played.filter(function(p){return p.starter;}).sort(function(a,b){return a.position-b.position;});
   const ben=played.filter(function(p){return !p.starter;}).sort(function(a,b){return a.name.localeCompare(b.name);});const all=tit.concat(ben);
-  const cellv=function(s,k){return '<span style="color:var(--text-success)">'+s[k].g+'</span>/<span style="color:var(--text-danger)">'+s[k].b+'</span>';};
+  const cellv=function(s,k){const v=s[k]||{g:0,b:0};return '<span style="color:var(--text-success)">'+v.g+'</span>/<span style="color:var(--text-danger)">'+v.b+'</span>';};
   const row=function(p){const s=iSt(p);
     return '<tr><td style="padding:6px 4px"><span class="pbadge" style="width:22px;height:22px;font-size:10px;display:inline-flex;background:'+(RC[p.role]||'#888')+'">'+esc(p.number)+'</span></td>'+
     '<td style="padding:6px 4px;font-size:12px">'+esc(p.name)+'</td>'+
     '<td style="padding:6px 4px;font-size:12px;font-weight:500;color:var(--text-accent)">'+s.puntos+'</td>'+
     '<td style="padding:6px 4px;font-size:12px">'+cellv(s,'ataque')+'</td>'+
     '<td style="padding:6px 4px;font-size:12px">'+cellv(s,'bloque')+'</td><td style="padding:6px 4px;font-size:12px">'+cellv(s,'recep')+'</td>'+
-    '<td style="padding:6px 4px;font-size:12px">'+cellv(s,'saque')+'</td></tr>';};
+    '<td style="padding:6px 4px;font-size:12px">'+cellv(s,'saque')+'</td>'+
+    '<td style="padding:6px 4px;font-size:12px">'+cellv(s,'armada')+'</td></tr>';};
   const th=function(t){return '<th style="text-align:left;font-size:11px;color:var(--text-secondary);font-weight:500;padding:4px">'+t+'</th>';};
   document.getElementById('modal').innerHTML=
     '<div class="ov"><div class="sheet"><div class="grab"></div>'+
     '<div class="sh-head"><div style="flex:1;font-size:15px;font-weight:500;color:var(--text-primary)">Estadísticas · Set '+st.set+'</div>'+
     '<button class="ico" style="border:none;width:30px;height:30px" onclick="closeModal()" aria-label="Cerrar"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
     '<table style="width:100%;border-collapse:collapse"><thead><tr style="border-bottom:0.5px solid var(--border-strong)">'+
-    '<th></th>'+th('Jugador')+th('Pts')+th('Ataque')+th('Bloque')+th('Recep')+th('Saque')+'</tr></thead>'+
+    '<th></th>'+th('Jugador')+th('Pts')+th('Ataque')+th('Bloque')+th('Recep')+th('Saque')+th('Armada')+'</tr></thead>'+
     '<tbody>'+all.map(row).join('')+'</tbody></table>'+
     (all.length?'':'<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:8px">Todavía nadie registró estadísticas en este partido.</p>')+
     '<p style="font-size:11px;color:var(--text-muted);margin-top:8px"><span style="color:var(--text-success)">verde</span> = bien · <span style="color:var(--text-danger)">rojo</span> = mal · <span style="color:var(--text-accent)">Pts</span> = anotados con trofeo</p>'+
@@ -1645,8 +1890,10 @@ Object.assign(window, {
   editAuthor, editNote, delRally, openMenu, doRotate, nextSet, confirmFinalize, finalizeMatch, openMatchDetail,
   showStats, closeModal, st, handleLogoFile, setTeamDescription,
   setPlayerRole, setPlayerGender, setPlayerNumber, setPlayerInjured, toggleSecondaryRole, confirmDeleteMatch, deleteMatchRecord,
-  openLineupSetup, pickLineupSlot, setLineupSlot, confirmLineup, confirmDiscardMatch,
-  openMembers, setMemberRole
+  openLineupSetup, renderLineupSetup, pickLineupSlot, setLineupSlot, confirmLineup, confirmDiscardMatch,
+  openMembers, setMemberRole,
+  openCallUp, toggleCallUp, confirmCallUp,
+  undoLastPoint, quickLiberoIn, quickLiberoOut, pickLiberoFor
 });
 </script>
 </body>
