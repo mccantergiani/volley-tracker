@@ -185,7 +185,7 @@ html,body{margin:0;background:var(--surface-0);color:var(--text-primary);font-fa
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Iniciá sesión para acceder al equipo</div>
     <button class="btn-pri" style="max-width:260px;margin:0 auto" onclick="signInGoogle()"><i class="ti ti-brand-google" aria-hidden="true"></i> Iniciar sesión con Google</button>
     <div class="errmsg" id="loginErr" style="display:none;margin-top:10px"></div>
-    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-25.3</div>
+    <div style="font-size:10px;color:var(--text-muted);margin-top:30px">build 2026-08-25.4</div>
   </div>
 </div>
 
@@ -356,6 +356,7 @@ const db = getFirestore(fbApp);
 
 const RC={setter:'#5B4FBE',opuesto:'#A02060',punta:'#1E7E5A',central:'#1A6FA8',libero:'#D4520E'};
 const RN={setter:'Armador',opuesto:'Opuesto',punta:'Punta',central:'Central',libero:'Líbero'};
+const ROLE_ORDER={setter:0,opuesto:1,punta:2,central:3,libero:4};
 const GN={M:'Masculino',F:'Femenino',X:'Otro'};
 const GP=[4,3,2,5,6,1];
 const METRICS=[['bloque','Bloque',true],['recep','Recepción',false],['armada','Armada',false],['ataque','Ataque',true],['saque','Saque',true]];
@@ -367,7 +368,7 @@ const TITULAR_SLOTS=[
   {key:'puntaB',role:'punta',label:'Punta'},
   {key:'setter',role:'setter',label:'Armador'},
   {key:'opuesto',role:'opuesto',label:'Opuesto'},
-  {key:'libero',role:'libero',label:'Líbero'}
+  {key:'libero',role:'libero',label:'Líbero (opcional)'}
 ];
 
 let st={teamName:'',teamLogo:null,teamDescription:'',players:[],score:{us:0,them:0},set:1,serving:'us',rallies:[],career:{},matches:[],
@@ -803,12 +804,16 @@ async function goNewMatch(){
 function openCallUp(fromMenu){
   callUpDraft={};
   callUpFromMenu=!!fromMenu;
-  const preset=(st.calledUp&&st.calledUp.length)?st.calledUp:st.players.map(function(p){return p.id;});
+  const preset=callUpFromMenu?(st.calledUp||[]):[];
   st.players.forEach(function(p){callUpDraft[p.id]=preset.indexOf(p.id)>=0;});
   renderCallUp();
 }
 function renderCallUp(){
-  const chips=st.players.slice().sort(function(a,b){return a.name.localeCompare(b.name);}).map(function(p){
+  const chips=st.players.slice().sort(function(a,b){
+    const ra=ROLE_ORDER[a.role]!==undefined?ROLE_ORDER[a.role]:99, rb=ROLE_ORDER[b.role]!==undefined?ROLE_ORDER[b.role]:99;
+    if(ra!==rb)return ra-rb;
+    return a.name.localeCompare(b.name);
+  }).map(function(p){
     const checked=!!callUpDraft[p.id];
     const locked=callUpFromMenu && p.starter;
     const style=checked?'background:var(--bg-accent);border-color:var(--border-accent)':'';
@@ -868,13 +873,15 @@ function renderTitulares(){
     return '<div class="sec-t" style="margin-top:'+(idx===0?'0':'12px')+'">'+slot.label+'</div><div class="chips">'+(chips||'<span style="font-size:11px;color:var(--text-muted)">Sin convocados disponibles.</span>')+'</div>';
   }).join('');
   const filled=Object.keys(titularDraft).filter(function(k){return titularDraft[k];}).length;
+  const requiredSlots=TITULAR_SLOTS.filter(function(s){return s.role!=='libero';});
+  const filledRequired=requiredSlots.filter(function(s){return titularDraft[s.key];}).length;
   const closeAction=matchSetupIsNewMatch?'cancelNewMatch()':'closeModal()';
   document.getElementById('modal').innerHTML='<div class="ov"><div class="sheet"><div class="grab"></div>'+
     '<div class="sh-head"><div style="flex:1;font-size:15px;font-weight:500;color:var(--text-primary)">Titulares de este partido</div>'+
     '<button class="ico" style="border:none;width:30px;height:30px" onclick="'+closeAction+'" aria-label="Cerrar"><i class="ti ti-x" aria-hidden="true"></i></button></div>'+
-    '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">Elegí quién juega de qué en este partido/set (no es el rol de perfil, es lo que juega hoy). El líbero se define acá mismo.</div>'+
+    '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">Elegí quién juega de qué en este partido/set (no es el rol de perfil, es lo que juega hoy). El líbero se define acá mismo (si no convocaste a nadie de más, podés dejarlo sin elegir).</div>'+
     rows+
-    '<button class="btn-pri" style="width:100%;margin-top:14px" onclick="confirmTitulares()" '+(filled<7?'disabled':'')+'>Continuar ('+filled+'/7)</button>'+
+    '<button class="btn-pri" style="width:100%;margin-top:14px" onclick="confirmTitulares()" '+(filledRequired<requiredSlots.length?'disabled':'')+'>Continuar ('+filled+'/7)</button>'+
     '</div></div>';
 }
 function pickTitular(slotKey,playerId){
@@ -883,10 +890,11 @@ function pickTitular(slotKey,playerId){
   renderTitulares();
 }
 async function confirmTitulares(){
-  const filled=Object.keys(titularDraft).filter(function(k){return titularDraft[k];}).length;
-  if(filled<7){showToast('Elegí los 7 titulares (incluido el líbero).');return;}
+  const requiredSlots=TITULAR_SLOTS.filter(function(s){return s.role!=='libero';});
+  const filledRequired=requiredSlots.filter(function(s){return titularDraft[s.key];}).length;
+  if(filledRequired<requiredSlots.length){showToast('Elegí los 6 titulares de cancha.');return;}
   const roles={};
-  TITULAR_SLOTS.forEach(function(slot){ roles[titularDraft[slot.key]]=slot.role; });
+  TITULAR_SLOTS.forEach(function(slot){ if(titularDraft[slot.key]) roles[titularDraft[slot.key]]=slot.role; });
   await updateDoc(liveRef(),{matchRoles:roles, liberoAutoPaused:false, liberoSwap:null}).catch(function(err){
     showToast('No se pudieron guardar los titulares ('+(err&&err.code?err.code:'error')+'). El líbero automático puede no funcionar.');
   });
@@ -1434,7 +1442,7 @@ function rPanel(){
     '</div></div>';
   }).join('');
   let quickBtn='';
-  if(p.starter && matchRoleOf(p.id)==='central' && backRow(p.position) && !st.liberoSwap){
+  if(p.starter && matchRoleOf(p.id)==='central' && liberoZone(p.position) && !st.liberoSwap){
     const declaredLiberoId=Object.keys(st.matchRoles||{}).find(function(id){return st.matchRoles[id]==='libero';});
     const declaredLibero=declaredLiberoId?benchPool().find(function(x){return x.id===declaredLiberoId;}):null;
     quickBtn=declaredLibero
@@ -1459,7 +1467,7 @@ function rPanel(){
     '<button class="btn-sec" style="width:100%;margin-top:6px" onclick="openSub(\''+p.id+'\')"><i class="ti ti-switch-horizontal" aria-hidden="true"></i> Reemplazar</button>'+
     quickBtn;
 }
-function backRow(pos){ return pos===1||pos===5||pos===6; }
+function liberoZone(pos){ return pos===5||pos===6; }
 function matchRoleOf(id){ return (st.matchRoles&&st.matchRoles[id])||null; }
 function computeRotatedPositions(){
   const map={};
@@ -1481,8 +1489,8 @@ function computeAutoLiberoSync(rotatedMap){
   let needsCoverage=null, needsRelease=null;
   centrals.forEach(function(c){
     if(covered && c.id===covered.id){
-      if(liberoWasStarter && !backRow(liberoPostPos)) needsRelease=c;
-    }else if(c.starter && backRow(postPos(c))){
+      if(liberoWasStarter && !liberoZone(liberoPostPos)) needsRelease=c;
+    }else if(c.starter && liberoZone(postPos(c))){
       needsCoverage=c;
     }
   });
@@ -1543,7 +1551,7 @@ function quickLiberoIn(centralId, liberoId){
   if(!guardEdit())return;
   const central=P(centralId), libero=P(liberoId);
   if(!central||!libero)return;
-  if(!central.starter || !backRow(central.position)){ showToast('Ese jugador ya no está en zaga.'); return; }
+  if(!central.starter || !liberoZone(central.position)){ showToast('Ese jugador ya no está en zaga.'); return; }
   const pos=central.position;
   const batch=writeBatch(db);
   batch.update(rosterDoc(libero.id),{starter:true,position:pos});

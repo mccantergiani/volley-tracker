@@ -1,4 +1,4 @@
-const CACHE = 'voley-tracker-v8';
+const CACHE = 'voley-tracker-v9';
 const ASSETS = ['./', './index.html', './manifest.json', './icon.svg', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
